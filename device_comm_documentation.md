@@ -311,3 +311,19 @@ This section outlines the POST endpoints available for communication with the de
   ```
 - **Example Response**: `Device is restarting...`
 
+### 17. `/setTheatreChatConfig`
+- **Description**: Configures TheatreChat OSC settings (port, channel, name, and message).
+- **Required Parameters**:
+  - `port` (Integer): The OSC port number for TheatreChat communication.
+  - `channel` (String): The channel ID for TheatreChat.
+  - `name` (String): The name of the TheatreChat device.
+  - `message` (String): A test message to send.
+- **Example Request**:
+  ```
+  POST /setTheatreChatConfig HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  port=9000&channel=Main&name=Device1&message=TestMessage
+  ```
+- **Example Response**: `OK`
