@@ -327,3 +327,93 @@ This section outlines the POST endpoints available for communication with the de
   port=9000&channel=Main&name=Device1&message=TestMessage
   ```
 - **Example Response**: `OK`
+
+### 18. `/setCameraMirror`
+- **Handler**: `handleSetCameraMirror(request)`
+- **Description**: Mirrors the camera image. This is typically not used frequently as device rotation usually handles orientation.
+- **Required Parameter**:
+  - `mirror` (Integer): Set to `1` to enable mirroring or `0` to disable.
+- **Example Request**:
+  ```
+  POST /setCameraMirror HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  mirror=1
+  ```
+- **Example Response**: `OK`
+
+### 19. `/setCameraFlip`
+- **Handler**: `handleSetCameraFlip(request)`
+- **Description**: Flips the camera image. Similar to camera mirror, it is generally not used independently.
+- **Required Parameter**:
+  - `flip` (Integer): Set to `1` to enable flipping or `0` to disable.
+- **Example Request**:
+  ```
+  POST /setCameraFlip HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  flip=1
+  ```
+- **Example Response**: `OK`
+
+### 20. `/setIr`
+- **Handler**: `handleSetIr(request)`
+- **Description**: Configures infrared settings for the camera.
+- **Required Parameter**:
+  - `ir` (Integer): Set to `1` to enable IR or `0` to disable.
+- **Example Request**:
+  ```
+  POST /setIr HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  ir=1
+  ```
+- **Example Response**: `OK`
+
+### 21. `/setOscReceive`
+- **Handler**: `handleSetOscReceive(request)`
+- **Description**: Configures the reception of OSC messages.
+- **Required Parameter**:
+  - `oscReceive` (Integer): Set to `1` to enable OSC message reception or `0` to disable.
+- **Example Request**:
+  ```
+  POST /setOscReceive HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  oscReceive=1
+  ```
+- **Example Response**: `OK`
+
+### 22. `/setOscPort`
+- **Handler**: `handleSetOscPort(request)`
+- **Description**: Adjusts the port used for incoming OSC messages, affecting the system's OSC communication.
+- **Required Parameter**:
+  - `port` (Integer): The OSC port number to be used.
+- **Example Request**:
+  ```
+  POST /setOscPort HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  port=8000
+  ```
+- **Example Response**: `OK`
+
+### 23. `/setDeviceOrientation`
+- **Handler**: `handleSetDeviceOrientation(request)`
+- **Description**: Changes the screen orientation (currently). In future updates, this will also adjust the camera orientation.
+- **Required Parameter**:
+  - `orientation` (Integer): Set the orientation in degrees (0, 90, 180, 270).
+- **Example Request**:
+  ```
+  POST /setDeviceOrientation HTTP/1.1
+  Host: [device_ip]
+  Content-Type: application/x-www-form-urlencoded
+
+  orientation=90
+  ```
+- **Example Response**: `OK`
