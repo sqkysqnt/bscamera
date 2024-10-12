@@ -149,7 +149,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <body>
 
     <div class="container">
-        <h1>ESP32 Device Dashboard</h1>
+        <h1>Device Dashboard</h1>
 
         <!-- Status Section -->
         <div class="status-section">
@@ -207,7 +207,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         </div>
         <div id="oscSection">
             <div class="form-group">
-                <label for="oscPort">OSC Receive Port:</label>
+                <label for="oscPort">OSC Receive Port (Requires Restart):</label>
                 <input type="number" id="oscPort" placeholder="Enter OSC Port">
             </div>
         </div>
@@ -271,7 +271,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <!-- IR Settings Section -->
         <div class="section-title">IR Settings</div>
         <div class="form-group">
-            <label><input type="checkbox" id="irOn"> IR On</label>
+            <label><input type="checkbox" id="irOn"> IR On/Off</label>
         </div>
 
         <!-- Sound Settings Section -->
@@ -698,10 +698,10 @@ const char index_html[] PROGMEM = R"rawliteral(
                 qualityValue.textContent = settings.quality;
 
                 // If you have more sliders like whiteBalance, repeat the same logic for them
-                const whiteBalanceSlider = document.getElementById('whiteBalance');
-                const whiteBalanceValue = document.getElementById('whiteBalanceValue');
-                whiteBalanceSlider.value = settings.whiteBalance;
-                whiteBalanceValue.textContent = settings.whiteBalance;
+                // const whiteBalanceSlider = document.getElementById('whiteBalance');
+                // const whiteBalanceValue = document.getElementById('whiteBalanceValue');
+                // whiteBalanceSlider.value = settings.whiteBalance;
+                // whiteBalanceValue.textContent = settings.whiteBalance;
 
                 document.getElementById('irOn').checked = settings.irEnabled;
                 document.getElementById('msgSendToggle').checked = settings.theatreChatEnabled;
