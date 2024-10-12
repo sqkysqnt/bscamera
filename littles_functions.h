@@ -33,7 +33,7 @@ extern bool cameraAwbGain;
 extern int cameraWbMode;
 
 void saveSettings() {
-    preferences.begin("settings", false);  // Open "settings" namespace for read/write
+    //preferences.begin("settings", false);  // Open "settings" namespace for read/write
     
     preferences.putBool("debugMode", debugMode);
     preferences.putBool("cameraFlip", cameraFlip);
@@ -61,12 +61,12 @@ void saveSettings() {
     preferences.putBool("awbGain", cameraAwbGain);
     preferences.putInt("wbMode", cameraWbMode);
 
-    preferences.end();  // Close the preferences to free up memory
+    //preferences.end();  // Close the preferences to free up memory
     Serial.println("Settings saved successfully");
 }
 
 void loadSettings() {
-    preferences.begin("settings", true);  // Open "settings" namespace for read-only
+    //preferences.begin("settings", true);  // Open "settings" namespace for read-only
     
     debugMode = preferences.getBool("debugMode", false);  // Default to false if not found
     cameraFlip = preferences.getBool("cameraFlip", true);  // Default to true (normal orientation)
@@ -96,7 +96,7 @@ void loadSettings() {
     cameraAwbGain = preferences.getBool("awbGain", true);
     cameraWbMode = preferences.getInt("wbMode", 0);
 
-    preferences.end();  // Close the preferences to free up memory
+    //preferences.end();  // Close the preferences to free up memory
 
     Serial.println("Loaded settings:");
     Serial.print("Debug Mode: "); Serial.println(debugMode ? "Enabled" : "Disabled");
