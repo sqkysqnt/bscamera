@@ -1067,7 +1067,7 @@ if (!fb) {
         logSerial("PIR Task created.");
     }
 
-    xTaskCreatePinnedToCore(streamTask, "Stream Task", 8192, NULL, 1, &streamTaskHandle, 1);
+    xTaskCreatePinnedToCore(streamTask, "Stream Task", 16384, NULL, 1, &streamTaskHandle, 1);
 
     loadSettings();
 }
