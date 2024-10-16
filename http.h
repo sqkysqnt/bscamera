@@ -51,6 +51,12 @@ extern bool cameraWhiteBalance;
 extern bool cameraAwbGain;
 extern int cameraWbMode;
 
+extern String micOnColor;
+extern String micOffColor;
+extern String micReadyColor;
+extern bool ledState;
+extern int ledBrightness;
+
 
 void saveSettings();
 void loadSettings();
@@ -786,6 +792,74 @@ void handleSendTestOscMessage(AsyncWebServerRequest *request) {
 }
 
 
+// Handle the Mic On Color
+void handleSetMicOnColor(AsyncWebServerRequest *request) {
+    if (request->hasParam("micOnColor", true)) {
+        micOnColor = request->getParam("micOnColor", true)->value();  // Save the hex color to the global variable
+        saveSettings();
+        request->send(200, "text/plain", "Mic On Color Changed to: " + micOnColor);
+        logSerial("Mic On Color set to: " + micOnColor);
+    } else {
+        request->send(400, "text/plain", "Mic On Color Missing");
+        logSerial("Mic On Color not set!");
+    }
+}
+
+// Handle the Mic Off Color
+void handleSetMicOffColor(AsyncWebServerRequest *request) {
+    if (request->hasParam("micOffColor", true)) {
+        micOffColor = request->getParam("micOffColor", true)->value();  // Save the hex color to the global variable
+        saveSettings();
+        request->send(200, "text/plain", "Mic Off Color Changed to: " + micOffColor);
+        logSerial("Mic Off Color set to: " + micOffColor);
+    } else {
+        request->send(400, "text/plain", "Mic Off Color Missing");
+        logSerial("Mic Off Color not set!");
+    }
+}
+
+// Handle the Mic Ready Color
+void handleSetMicReadyColor(AsyncWebServerRequest *request) {
+    if (request->hasParam("micReadyColor", true)) {
+        micReadyColor = request->getParam("micReadyColor", true)->value();  // Save the hex color to the global variable
+        saveSettings();
+        request->send(200, "text/plain", "Mic Ready Color Changed to: " + micReadyColor);
+        logSerial("Mic Ready Color set to: " + micReadyColor);
+    } else {
+        request->send(400, "text/plain", "Mic Ready Color Missing");
+        logSerial("Mic Ready Color not set!");
+    }
+}
+
+// Handle the LED state (enable/disable)
+void handleSetLedState(AsyncWebServerRequest *request) {
+    if (request->hasParam("ledEnabled", true)) {
+        String ledStateStr = request->getParam("ledEnabled", true)->value();
+        ledState = (ledStateStr == "1");  // Convert to a boolean and save to global variable
+        saveSettings();
+        request->send(200, "text/plain", ledState ? "LEDs Enabled" : "LEDs Disabled");
+        logSerial("LED State set to: " + String(ledState ? "Enabled" : "Disabled"));
+    } else {
+        request->send(400, "text/plain", "LED State Missing");
+        logSerial("LED State not set!");
+    }
+}
+
+
+// LED Brightness Handler
+void handleSetLedBrightness(AsyncWebServerRequest *request) {
+    if (!request->hasParam("ledBrightness", true)) {
+        request->send(400, "text/plain", "Missing 'quality' argument");
+        return;
+    } else {
+      ledBrightness = request->getParam("ledBrightness", true)->value().toInt();
+      request->send(200, "text/plain", "LED Brightness set to: " + String(ledBrightness));
+      saveSettings();
+      logSerial("LED Brightness set to: " + String(ledBrightness));
+    }
+}
+
+
 // Handler to Serve Stored Settings as JSON
 void handleGetSettings(AsyncWebServerRequest *request) {
     loadSettings();
@@ -820,6 +894,13 @@ void handleGetSettings(AsyncWebServerRequest *request) {
     doc["whitebal"] = cameraWhiteBalance;
     doc["awbGain"] = cameraAwbGain;
     doc["wbMode"] = cameraWbMode;
+ 
+    doc["micOnColor"] = micOnColor;
+    doc["micOffColor"] = micOffColor;
+    doc["micReadyColor"] = micReadyColor;
+    doc["ledState"] = ledState;
+    doc["ledBrightness"] = ledBrightness;
+
 
     // Serialize the JSON document to a string and send it
     String json;
