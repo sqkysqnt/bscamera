@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <U8g2lib.h>
+#include "led.h"
 #include "osc.h"         // Include the OSC header (contains logSerial and displayScreen)
 #include "esp_camera.h"
 #include <ESPAsyncWebServer.h>  // Include AsyncWebServer library
@@ -15,6 +16,12 @@
 #include "http.h"
 #include "driver/i2s.h"
 #include "esp_vad.h"
+#include <Adafruit_NeoPixel.h>
+
+
+
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // Global objects and variables
 QueueHandle_t sensorEventQueue;
@@ -22,6 +29,7 @@ SemaphoreHandle_t cameraMutex;
 SemaphoreHandle_t soundSemaphore;
 SemaphoreHandle_t pirSemaphore;
 TaskHandle_t streamTaskHandle = NULL;
+
 
 WiFiUDP udp;
 WiFiClient streamingClient;
@@ -64,6 +72,14 @@ int16_t *vad_buff;
 // IR Settings variables
 bool irEnabled = false;
 int irBrightness = 50;
+
+// LED state and colors
+String micOnColor = "#00FF00";   // Default green
+String micOffColor = "#FF0000";  // Default red
+String micReadyColor = "#0000FF"; // Default blue
+bool ledState = false;  // Default to LEDs off
+int ledBrightness = 255;
+String ledColor = "#FFFFFF";
 
 // Define debounce delay
 
@@ -406,6 +422,12 @@ void processCommand(String command) {
         handleWarning();
     } else if (command == "clear") {
         handleClear();
+    } else if (command.startsWith("ledOn ")) {
+        // Extract everything after "ledOn " as the color arguments
+        currentOscMessage.pushString(command.substring(6)); // Push colors as a string into the message
+        handleLedOn();  // Process the LED command with multiple colors
+    } else if (command.startsWith("ledOff ")) {
+        handleLedOff();
     } else if (command.startsWith("display ")) {
         // Manually handle the display command without using add
         String displayText = command.substring(8);  // Extract the display argument
@@ -795,6 +817,8 @@ if (!res) {
     OscWiFi.subscribe(oscPort, "/warning", [](OscMessage &msg) { captureMessageAndProcess(msg, handleWarning); });
     OscWiFi.subscribe(oscPort, "/display", [](OscMessage &msg) { captureMessageAndProcess(msg, handleDisplay); });
     OscWiFi.subscribe(oscPort, "/clear", [](OscMessage &msg) { captureMessageAndProcess(msg, handleClear); });
+    OscWiFi.subscribe(oscPort, "/ledOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOn); });
+    OscWiFi.subscribe(oscPort, "/ledOff", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOff); });
     OscWiFi.subscribe(oscPort, "/theatrechat/message/*", receiveTheatreChatOscMessage);
 
 
@@ -972,6 +996,29 @@ if (!fb) {
     });
 
 
+    server.on("/setMicOnColor", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetMicOnColor(request);
+    });
+
+    server.on("/setMicOffColor", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetMicOffColor(request);
+    });
+
+    server.on("/setMicReadyColor", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetMicReadyColor(request);
+    });
+
+    server.on("/setLedState", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetLedState(request);
+    });
+
+    server.on("/setLedBrightness", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetLedBrightness(request);
+    });
+
+    
+
+
     delay(1000); 
 
     // Start the server
@@ -1070,6 +1117,9 @@ if (!fb) {
     xTaskCreatePinnedToCore(streamTask, "Stream Task", 16384, NULL, 1, &streamTaskHandle, 1);
 
     loadSettings();
+
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
 }
 
 void loop() {
@@ -1084,6 +1134,24 @@ void loop() {
 
     // Handle incoming OSC messages
     OscWiFi.update();
+
+    switch (currentMode) {
+        case LED_OFF:
+            turnOffLeds();
+            break;
+        
+        case LED_SOLID:
+            showSolidColor(currentColor);
+            break;
+        
+        case LED_PULSATE:
+            smoothPulsate(currentColor, strip.numPixels());
+            break;
+        
+        // Add more cases for additional behaviors if needed
+    }
+
+
     yield(); // Small delay to prevent WDT resets
     //WiFiClient client = streamServer.available();
     //if (client) {
@@ -1210,4 +1278,4 @@ void loop() {
     
     
     delay(1); // Small delay to prevent WDT resets
-}
+    }
