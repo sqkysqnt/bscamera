@@ -81,6 +81,9 @@
 
 #define IR_LED_PIN                  (45)
 
+#define LED_PIN    15
+#define NUM_LEDS   3
+
 #elif defined(LILYGO_ESP32S3_CAM_BIGSCREEN)
 
 
