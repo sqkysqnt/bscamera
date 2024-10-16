@@ -32,6 +32,12 @@ extern bool cameraWhiteBalance;
 extern bool cameraAwbGain;
 extern int cameraWbMode;
 
+extern String micOnColor;
+extern String micOffColor;
+extern String micReadyColor;
+extern bool ledState;
+extern int ledBrightness;
+
 void saveSettings() {
     //preferences.begin("settings", false);  // Open "settings" namespace for read/write
     
@@ -60,6 +66,12 @@ void saveSettings() {
     preferences.putBool("whitebal", cameraWhiteBalance);
     preferences.putBool("awbGain", cameraAwbGain);
     preferences.putInt("wbMode", cameraWbMode);
+
+    preferences.putString("micOnColor", micOnColor);
+    preferences.putString("micOffColor", micOffColor);
+    preferences.putString("micReadyColor", micReadyColor);
+    preferences.putBool("ledState", ledState);
+    preferences.putInt("ledBrightness", ledBrightness);
 
     //preferences.end();  // Close the preferences to free up memory
     Serial.println("Settings saved successfully");
@@ -96,6 +108,14 @@ void loadSettings() {
     cameraAwbGain = preferences.getBool("awbGain", true);
     cameraWbMode = preferences.getInt("wbMode", 0);
 
+    micOnColor = preferences.getString("micOnColor", "#00FF00");
+    micOffColor = preferences.getString("micOffColor", "#FF0000");
+    micReadyColor = preferences.getString("micReadyColor", "#0000FF");
+    ledState = preferences.getBool("ledState", true);
+    ledBrightness = preferences.getInt("ledBrightness", 255);
+
+
+
     //preferences.end();  // Close the preferences to free up memory
 
     Serial.println("Loaded settings:");
@@ -124,6 +144,12 @@ void loadSettings() {
     Serial.print("Camera White Balance: "); Serial.println(cameraWhiteBalance ? "Enabled" : "Disabled");
     Serial.print("Camera AWB Gain: "); Serial.println(cameraAwbGain ? "Enabled" : "Disabled");
     Serial.print("Camera WB Mode: "); Serial.println(cameraWbMode);
+
+    Serial.print("Mic On Color: "); Serial.println(micOnColor);
+    Serial.print("Mic Off Color: "); Serial.println(micOffColor);
+    Serial.print("Mic Ready Color: "); Serial.println(micReadyColor);
+    Serial.print("LEDs: "); Serial.println(ledState ? "Enabled" : "Disabled");
+    Serial.print("LED Brightness: "); Serial.println(ledBrightness);
 
     Serial.println("Settings loaded successfully");
 }
