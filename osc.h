@@ -219,43 +219,42 @@ void handleClear() {
 
 }
 
-void handleLedOn() {
-    if (currentOscMessage.size() > 0) {
-        String colorArgs = currentOscMessage.arg<String>(0);  // Get the first argument as a string
-        logSerial("LED Color Arguments: " + colorArgs);
 
-        // Split colorArgs by space (assuming colors are space-separated)
-        int spaceIndex = colorArgs.indexOf(' ');
-        String primaryColor = (spaceIndex == -1) ? colorArgs : colorArgs.substring(0, spaceIndex);
-        String secondaryColor = (spaceIndex == -1) ? "" : colorArgs.substring(spaceIndex + 1);
 
-        logSerial("Primary Color: " + primaryColor);
-        if (secondaryColor.length() > 0) {
-            logSerial("Secondary Color: " + secondaryColor);
-        }
 
-        // Resolve the primary color
-        String hexColor = get_gel_color(primaryColor);
-        if (hexColor == "#FFFFFF") {
-            logSerial("Invalid primary color: " + primaryColor);
-            return;
-        }
+void handleLedOn(String ledColor) {
+    logSerial("LED Color Arguments: " + ledColor);
+
+    // Resolve the color
+    String hexColor = get_gel_color(ledColor);
+
+    // Check if the color is valid
+    if (hexColor != "#FFFFFF" || ledColor.equalsIgnoreCase("white")) {
+        logSerial("Resolved Hex Color: " + hexColor);
 
         // Convert the hex color to RGB
         uint8_t r, g, b;
         hexToRGB(hexColor, r, g, b);
         currentColor = strip.Color(r, g, b);
 
-        // If there's a secondary color, handle that as well (optional logic)
-        if (secondaryColor.length() > 0) {
-            // You could blend the colors, set a pattern, or handle it differently
-            logSerial("Handling secondary color is not implemented, only using primary color.");
-        }
-
         currentMode = LED_SOLID;
-        showSolidColor(currentColor);  // Display the solid color on the LEDs
+        showSolidColor(currentColor);
     } else {
-        logSerial("Invalid LED color input.");
+        logSerial("Invalid color: " + ledColor);
+    }
+}
+
+
+void handleLedOnFromOSC() {
+    if (currentOscMessage.size() > 0) {
+        String ledColor = "";
+        for (int i = 0; i < currentOscMessage.size(); i++) {
+            if (i > 0) ledColor += " ";  // Add space between words
+            ledColor += currentOscMessage.arg<String>(i);
+        }
+        handleLedOn(ledColor);  // Pass the full color name to handleLedOn
+    } else {
+        logSerial("Invalid OSC message: No arguments.");
     }
 }
 
