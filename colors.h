@@ -1,15 +1,14 @@
 #ifndef COLORS_H
 #define COLORS_H
 
-#include <pgmspace.h>
-
-// Define structures to hold name and hex pairs in flash memory
+// Define structures to hold name and hex pairs
 struct GelColor {
-  const char* name;
-  const char* hex;
+    const char* name;
+    const char* hex;
 };
 
-const GelColor gels[] PROGMEM = {
+// Remove PROGMEM and store data directly
+const GelColor gels[] = {
     {"kelly green", "#19ffc1"}, {"r92", "#19ffc1"}, {"rosco 92", "#19ffc1"},
     {"pink red", "#FFFFFF"}, {"e0", "#FFFFFF"}, {"ecolor 0", "#FFFFFF"},
     {"med yellow", "#fff200"}, {"r10", "#fff200"}, {"rosco 10", "#fff200"},
@@ -95,5 +94,6 @@ const GelColor gels[] PROGMEM = {
     {"bastard amber", "#ffcdab"}, {"r2", "#ffcdab"}, {"rosco 2", "#ffcdab"},
     // Add remaining colors following the same format
 };
+
 
 #endif
