@@ -29,23 +29,28 @@ extern Adafruit_NeoPixel strip;
 
 
 // Function to return the hex code or name
+// led.h
+
 String get_gel_color(String query) {
     query.toLowerCase(); // Convert query to lowercase
 
     // Iterate through the array to find the match
     for (size_t i = 0; i < sizeof(gels) / sizeof(GelColor); i++) {
-        char nameBuffer[30], hexBuffer[10];  // Buffers for holding values from flash
-        strcpy_P(nameBuffer, (PGM_P)pgm_read_word(&(gels[i].name)));  // Read name from PROGMEM
-        strcpy_P(hexBuffer, (PGM_P)pgm_read_word(&(gels[i].hex)));    // Read hex from PROGMEM
+        String nameStr = String(gels[i].name);
+        String hexStr = String(gels[i].hex);
 
-        if (query == String(nameBuffer) || query == String(hexBuffer)) {
-            return String(hexBuffer);  // Return hex code if query matches name or hex
+        nameStr.toLowerCase(); // Ensure names are in lowercase for comparison
+
+        if (query == nameStr || query == hexStr) {
+            return hexStr;  // Return hex code if query matches name or hex
         }
     }
 
     // Default to white if no match found
     return "#FFFFFF";
 }
+
+
 
 
 
@@ -63,6 +68,7 @@ uint32_t scaleColorBrightness(uint32_t color, int brightness) {
     return strip.Color(r, g, b);
 }
 
+
 // Function to convert hex color (e.g., #FF0000) to RGB
 void hexToRGB(const String &hex, uint8_t &r, uint8_t &g, uint8_t &b) {
     // Convert the String to a C-style string and skip the first character (the '#' symbol)
@@ -71,6 +77,8 @@ void hexToRGB(const String &hex, uint8_t &r, uint8_t &g, uint8_t &b) {
     g = (number >> 8) & 0xFF;
     b = number & 0xFF;
 }
+
+
 void turnOffLeds() {
     for (int i = 0; i < strip.numPixels(); i++) {
         strip.setPixelColor(i, strip.Color(0, 0, 0));  // Set each LED to black (off)
