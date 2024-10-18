@@ -130,7 +130,7 @@ unsigned long loopMillis = 0;  // Initialize it globally
 // Button press handler to cycle screens
 void handleButtonPress() {
     screenPress++;
-    if (screenPress > 4) {
+    if (screenPress > 5) {
         screenPress = 1;
     }
     handleScreenSwitch();
@@ -152,6 +152,10 @@ void handleScreenSwitch() {
         case 4:
             displayScreen("Amplitude:");
             soundDebounceDebug = true;
+            break;
+        case 5:
+            u8g2.clearBuffer();
+            u8g2.sendBuffer();
             break;
         default:
             screenPress = 1;  // Loop back to screen 1
@@ -361,10 +365,9 @@ void sendTheatreChatOscMessage(String messageToSend) {
 }
 
 // Callback function to process received OSC messages
-// Correct the receiveTheatreChatOscMessage function
 void receiveTheatreChatOscMessage(OscMessage &msg) {
     // Ensure the OSC address starts with /theatrechat/message/ and matches the theatreChatChannel
-    String address = msg.address();  // Use .address() instead of getAddress()
+    String address = msg.address();
     if (!address.startsWith("/theatrechat/message/") || !address.endsWith(theatreChatChannel)) {
         logSerial("Invalid OSC address or channel. Message ignored.");
         return; // Exit if the OSC message address doesn't match the expected format
@@ -377,10 +380,10 @@ void receiveTheatreChatOscMessage(OscMessage &msg) {
     }
 
     // Extract the sending name (first argument)
-    String sendingName = msg.arg<String>(0);  // Use arg<type>(index) to extract arguments
+    String sendingName = msg.arg<String>(0);
 
     // Extract the message to analyze (second argument)
-    String messageToAnalyze = msg.arg<String>(1);  // Use arg<type>(index)
+    String messageToAnalyze = msg.arg<String>(1);
 
     // Log the received message
     logSerial("Received message from: " + sendingName + " - " + messageToAnalyze);
@@ -395,16 +398,24 @@ void receiveTheatreChatOscMessage(OscMessage &msg) {
     String target = messageToAnalyze.substring(0, spaceIndex);
     String command = messageToAnalyze.substring(spaceIndex + 1);
 
-    // Check if the target matches theatreChatName
-    if (target == theatreChatName || target == "all") {
+    // Convert target and theatreChatName to lowercase for case-insensitive comparison
+    String targetLower = target;
+    targetLower.toLowerCase();
+
+    String nameLower = theatreChatName;
+    nameLower.toLowerCase();
+
+    // Check if the target matches theatreChatName or "all" (case-insensitive)
+    if (targetLower == nameLower || targetLower == "all") {
         logSerial("Target matches theatreChatName. Processing command: " + command);
-        
+
         // Placeholder for command processing
         processCommand(command);
     } else {
         logSerial("Target does not match theatreChatName. Ignoring command.");
     }
 }
+
 
 // Placeholder function for command processing
 void processCommand(String command) {
@@ -423,9 +434,8 @@ void processCommand(String command) {
     } else if (command == "clear") {
         handleClear();
     } else if (command.startsWith("ledOn ")) {
-        // Extract everything after "ledOn " as the color arguments
-        currentOscMessage.pushString(command.substring(6)); // Push colors as a string into the message
-        handleLedOn();  // Process the LED command with multiple colors
+        String ledColor = command.substring(6);  // Extract everything after "ledOn "
+        handleLedOn(ledColor);
     } else if (command.startsWith("ledOff ")) {
         handleLedOff();
     } else if (command.startsWith("display ")) {
@@ -613,7 +623,7 @@ void setup() {
     PMU.enableVbusVoltageMeasure();
     PMU.enableBattVoltageMeasure();
     PMU.enableSystemVoltageMeasure();
-
+    
     pinMode(PMU_INPUT_PIN, INPUT);
     attachInterrupt(PMU_INPUT_PIN, setFlag, FALLING);
 
@@ -628,6 +638,10 @@ void setup() {
         XPOWERS_AXP2101_PKEY_SHORT_IRQ    | XPOWERS_AXP2101_PKEY_LONG_IRQ       |   //POWER KEY
         XPOWERS_AXP2101_BAT_CHG_DONE_IRQ  | XPOWERS_AXP2101_BAT_CHG_START_IRQ       //CHARGE
     );
+
+
+
+
 
     // Set the precharge charging current
     PMU.setPrechargeCurr(XPOWERS_AXP2101_PRECHARGE_50MA);
@@ -682,6 +696,8 @@ void setup() {
     * */
     //PMU.setChargingLedMode(XPOWERS_CHG_LED_BLINK_1HZ);
 
+    pinMode(USER_BUTTON_PIN, INPUT_PULLUP);
+
     // Initialize the display
     u8g2.begin();
     displayScreen("Power On");
@@ -707,7 +723,8 @@ void setup() {
     camera_config.pin_pwdn = PWDN_GPIO_NUM;
     camera_config.pin_reset = RESET_GPIO_NUM;
     camera_config.xclk_freq_hz = 20000000;
-    camera_config.frame_size = FRAMESIZE_VGA;
+    //camera_config.frame_size = FRAMESIZE_SVGA;
+    camera_config.frame_size = FRAMESIZE_VGA;    
     camera_config.pixel_format = PIXFORMAT_JPEG; // for streaming
     camera_config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     camera_config.fb_location = CAMERA_FB_IN_PSRAM;
@@ -817,7 +834,7 @@ if (!res) {
     OscWiFi.subscribe(oscPort, "/warning", [](OscMessage &msg) { captureMessageAndProcess(msg, handleWarning); });
     OscWiFi.subscribe(oscPort, "/display", [](OscMessage &msg) { captureMessageAndProcess(msg, handleDisplay); });
     OscWiFi.subscribe(oscPort, "/clear", [](OscMessage &msg) { captureMessageAndProcess(msg, handleClear); });
-    OscWiFi.subscribe(oscPort, "/ledOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOn); });
+    OscWiFi.subscribe(oscPort, "/ledOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOnFromOSC); });
     OscWiFi.subscribe(oscPort, "/ledOff", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOff); });
     OscWiFi.subscribe(oscPort, "/theatrechat/message/*", receiveTheatreChatOscMessage);
 
@@ -826,8 +843,8 @@ if (!res) {
 
     // Update camera_config based on loaded settings
     //camera_config.frame_size  = (cameraResolution == "QVGA") ? FRAMESIZE_QVGA :
-    //                           (cameraResolution == "VGA") ? FRAMESIZE_VGA :
-    //                           (cameraResolution == "SVGA") ? FRAMESIZE_SVGA : FRAMESIZE_QVGA;    
+    //                            (cameraResolution == "VGA") ? FRAMESIZE_VGA :
+    //                            (cameraResolution == "SVGA") ? FRAMESIZE_SVGA : FRAMESIZE_QVGA;    
 
     // Initialize the camera with updated config
     esp_err_t err = esp_camera_init(&camera_config);
