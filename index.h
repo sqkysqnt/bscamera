@@ -303,6 +303,33 @@ const char index_html[] PROGMEM = R"rawliteral(
             <label><input type="radio" name="orientation" value="180"> 180°</label>
             <label><input type="radio" name="orientation" value="270"> 270°</label>
         </div>
+        <!-- LED Control Section -->
+        <div class="section-title">LED Control</div>
+
+        <div class="form-group">
+            <label><input type="checkbox" id="ledToggle"> Enable/Disable LEDs</label>
+        </div>
+        <div class="form-group">
+            <label for="ledBrightness">LED Brightness<span class="slider-value" id="ledBrightnessValue">255</span></label>
+            <input type="range" id="ledBrightness" min="0" max="255" value="255" class="slider">
+        </div>
+        <!-- Color Selection for Mic On -->
+        <div class="form-group">
+            <label for="micOnColor">Select Color for Mic On:</label>
+            <input type="color" id="micOnColor" value="#00FF00">  <!-- Default Green -->
+        </div>
+
+        <!-- Color Selection for Mic Off -->
+        <div class="form-group">
+            <label for="micOffColor">Select Color for Mic Off:</label>
+            <input type="color" id="micOffColor" value="#FF0000">  <!-- Default Red -->
+        </div>
+
+        <!-- Color Selection for Mic Ready -->
+        <div class="form-group">
+            <label for="micReadyColor">Select Color for Mic Ready:</label>
+            <input type="color" id="micReadyColor" value="#0000FF">  <!-- Default Blue -->
+        </div>
 
         <!-- Debug Mode Section -->
         <div class="section-title">Debug Mode</div>
@@ -462,6 +489,15 @@ const char index_html[] PROGMEM = R"rawliteral(
         xhr.send('quality=' + quality);
     });
 
+    // JavaScript for LED Brightness Slider
+    document.getElementById('ledBrightness').addEventListener('input', function () {
+        const ledBrightness = this.value;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/setLedBrightness', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('ledBrightness=' + ledBrightness);
+    });
+
     // Add event listeners for Sound Threshold, Sound Debounce Delay, and PIR Debounce Delay
     document.getElementById('soundThreshold').addEventListener('input', function () {
         const soundThreshold = this.value;
@@ -534,6 +570,41 @@ const char index_html[] PROGMEM = R"rawliteral(
         }
     }
 
+    // JavaScript to handle LED Enable/Disable
+    document.getElementById('ledToggle').addEventListener('change', function () {
+        const ledEnabled = this.checked ? '1' : '0';
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/setLedState', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('ledEnabled=' + ledEnabled);
+    });
+
+    // JavaScript for Mic On Color
+    document.getElementById('micOnColor').addEventListener('change', function () {
+        const micOnColor = this.value;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/setMicOnColor', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('micOnColor=' + micOnColor);
+    });
+
+    // JavaScript for Mic Off Color
+    document.getElementById('micOffColor').addEventListener('change', function () {
+        const micOffColor = this.value;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/setMicOffColor', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('micOffColor=' + micOffColor);
+    });
+
+    // JavaScript for Mic Ready Color
+    document.getElementById('micReadyColor').addEventListener('change', function () {
+        const micReadyColor = this.value;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/setMicReadyColor', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('micReadyColor=' + micReadyColor);
+    });
 
 
 
@@ -613,6 +684,17 @@ const char index_html[] PROGMEM = R"rawliteral(
             console.error('All Theatre Chat fields must be filled before sending the request.');
         }
     }
+
+    // JavaScript for LED Brightness Slider
+    document.getElementById('ledBrightness').addEventListener('input', function () {
+        const ledBrightness = this.value;
+        document.getElementById('ledBrightnessValue').textContent = ledBrightness;
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/setLedBrightness', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('ledBrightness=' + ledBrightness);
+    });
 
     // Function to update uptime
     function updateUptime() {
@@ -742,6 +824,17 @@ const char index_html[] PROGMEM = R"rawliteral(
                 // Set white balance mode dropdown
                 const wbModeSelect = document.getElementById('wbMode');
                 wbModeSelect.value = settings.wbMode;
+
+                // Update LED Brightness slider and value
+                const ledBrightnessSlider = document.getElementById('ledBrightness');
+                const ledBrightnessValue = document.getElementById('ledBrightnessValue');
+                ledBrightnessSlider.value = settings.ledBrightness;
+                ledBrightnessValue.textContent = settings.ledBrightness;
+
+                const micOnColorInput = document.getElementById('micOnColor');
+                const micOffColorInput = document.getElementById('micOffColor');
+                const micReadyColorInput = document.getElementById('micReadyColor');
+                const ledToggle = document.getElementById('ledToggle');
 
                 document.getElementById('oscToggle').checked = settings.oscReceive;
 

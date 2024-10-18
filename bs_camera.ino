@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <U8g2lib.h>
+#include "led.h"
 #include "osc.h"         // Include the OSC header (contains logSerial and displayScreen)
 #include "esp_camera.h"
 #include <ESPAsyncWebServer.h>  // Include AsyncWebServer library
@@ -15,6 +16,12 @@
 #include "http.h"
 #include "driver/i2s.h"
 #include "esp_vad.h"
+#include <Adafruit_NeoPixel.h>
+
+
+
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // Global objects and variables
 QueueHandle_t sensorEventQueue;
@@ -22,6 +29,7 @@ SemaphoreHandle_t cameraMutex;
 SemaphoreHandle_t soundSemaphore;
 SemaphoreHandle_t pirSemaphore;
 TaskHandle_t streamTaskHandle = NULL;
+
 
 WiFiUDP udp;
 WiFiClient streamingClient;
@@ -64,6 +72,14 @@ int16_t *vad_buff;
 // IR Settings variables
 bool irEnabled = false;
 int irBrightness = 50;
+
+// LED state and colors
+String micOnColor = "#00FF00";   // Default green
+String micOffColor = "#FF0000";  // Default red
+String micReadyColor = "#0000FF"; // Default blue
+bool ledState = false;  // Default to LEDs off
+int ledBrightness = 255;
+String ledColor = "#FFFFFF";
 
 // Define debounce delay
 
@@ -114,7 +130,7 @@ unsigned long loopMillis = 0;  // Initialize it globally
 // Button press handler to cycle screens
 void handleButtonPress() {
     screenPress++;
-    if (screenPress > 4) {
+    if (screenPress > 5) {
         screenPress = 1;
     }
     handleScreenSwitch();
@@ -136,6 +152,10 @@ void handleScreenSwitch() {
         case 4:
             displayScreen("Amplitude:");
             soundDebounceDebug = true;
+            break;
+        case 5:
+            u8g2.clearBuffer();
+            u8g2.sendBuffer();
             break;
         default:
             screenPress = 1;  // Loop back to screen 1
@@ -345,10 +365,9 @@ void sendTheatreChatOscMessage(String messageToSend) {
 }
 
 // Callback function to process received OSC messages
-// Correct the receiveTheatreChatOscMessage function
 void receiveTheatreChatOscMessage(OscMessage &msg) {
     // Ensure the OSC address starts with /theatrechat/message/ and matches the theatreChatChannel
-    String address = msg.address();  // Use .address() instead of getAddress()
+    String address = msg.address();
     if (!address.startsWith("/theatrechat/message/") || !address.endsWith(theatreChatChannel)) {
         logSerial("Invalid OSC address or channel. Message ignored.");
         return; // Exit if the OSC message address doesn't match the expected format
@@ -361,10 +380,10 @@ void receiveTheatreChatOscMessage(OscMessage &msg) {
     }
 
     // Extract the sending name (first argument)
-    String sendingName = msg.arg<String>(0);  // Use arg<type>(index) to extract arguments
+    String sendingName = msg.arg<String>(0);
 
     // Extract the message to analyze (second argument)
-    String messageToAnalyze = msg.arg<String>(1);  // Use arg<type>(index)
+    String messageToAnalyze = msg.arg<String>(1);
 
     // Log the received message
     logSerial("Received message from: " + sendingName + " - " + messageToAnalyze);
@@ -379,16 +398,24 @@ void receiveTheatreChatOscMessage(OscMessage &msg) {
     String target = messageToAnalyze.substring(0, spaceIndex);
     String command = messageToAnalyze.substring(spaceIndex + 1);
 
-    // Check if the target matches theatreChatName
-    if (target == theatreChatName || target == "all") {
+    // Convert target and theatreChatName to lowercase for case-insensitive comparison
+    String targetLower = target;
+    targetLower.toLowerCase();
+
+    String nameLower = theatreChatName;
+    nameLower.toLowerCase();
+
+    // Check if the target matches theatreChatName or "all" (case-insensitive)
+    if (targetLower == nameLower || targetLower == "all") {
         logSerial("Target matches theatreChatName. Processing command: " + command);
-        
+
         // Placeholder for command processing
         processCommand(command);
     } else {
         logSerial("Target does not match theatreChatName. Ignoring command.");
     }
 }
+
 
 // Placeholder function for command processing
 void processCommand(String command) {
@@ -406,6 +433,11 @@ void processCommand(String command) {
         handleWarning();
     } else if (command == "clear") {
         handleClear();
+    } else if (command.startsWith("ledOn ")) {
+        String ledColor = command.substring(6);  // Extract everything after "ledOn "
+        handleLedOn(ledColor);
+    } else if (command.startsWith("ledOff ")) {
+        handleLedOff();
     } else if (command.startsWith("display ")) {
         // Manually handle the display command without using add
         String displayText = command.substring(8);  // Extract the display argument
@@ -591,7 +623,7 @@ void setup() {
     PMU.enableVbusVoltageMeasure();
     PMU.enableBattVoltageMeasure();
     PMU.enableSystemVoltageMeasure();
-
+    
     pinMode(PMU_INPUT_PIN, INPUT);
     attachInterrupt(PMU_INPUT_PIN, setFlag, FALLING);
 
@@ -606,6 +638,10 @@ void setup() {
         XPOWERS_AXP2101_PKEY_SHORT_IRQ    | XPOWERS_AXP2101_PKEY_LONG_IRQ       |   //POWER KEY
         XPOWERS_AXP2101_BAT_CHG_DONE_IRQ  | XPOWERS_AXP2101_BAT_CHG_START_IRQ       //CHARGE
     );
+
+
+
+
 
     // Set the precharge charging current
     PMU.setPrechargeCurr(XPOWERS_AXP2101_PRECHARGE_50MA);
@@ -660,6 +696,8 @@ void setup() {
     * */
     //PMU.setChargingLedMode(XPOWERS_CHG_LED_BLINK_1HZ);
 
+    pinMode(USER_BUTTON_PIN, INPUT_PULLUP);
+
     // Initialize the display
     u8g2.begin();
     displayScreen("Power On");
@@ -685,7 +723,8 @@ void setup() {
     camera_config.pin_pwdn = PWDN_GPIO_NUM;
     camera_config.pin_reset = RESET_GPIO_NUM;
     camera_config.xclk_freq_hz = 20000000;
-    camera_config.frame_size = FRAMESIZE_VGA;
+    //camera_config.frame_size = FRAMESIZE_SVGA;
+    camera_config.frame_size = FRAMESIZE_VGA;    
     camera_config.pixel_format = PIXFORMAT_JPEG; // for streaming
     camera_config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     camera_config.fb_location = CAMERA_FB_IN_PSRAM;
@@ -795,6 +834,8 @@ if (!res) {
     OscWiFi.subscribe(oscPort, "/warning", [](OscMessage &msg) { captureMessageAndProcess(msg, handleWarning); });
     OscWiFi.subscribe(oscPort, "/display", [](OscMessage &msg) { captureMessageAndProcess(msg, handleDisplay); });
     OscWiFi.subscribe(oscPort, "/clear", [](OscMessage &msg) { captureMessageAndProcess(msg, handleClear); });
+    OscWiFi.subscribe(oscPort, "/ledOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOnFromOSC); });
+    OscWiFi.subscribe(oscPort, "/ledOff", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOff); });
     OscWiFi.subscribe(oscPort, "/theatrechat/message/*", receiveTheatreChatOscMessage);
 
 
@@ -802,8 +843,8 @@ if (!res) {
 
     // Update camera_config based on loaded settings
     //camera_config.frame_size  = (cameraResolution == "QVGA") ? FRAMESIZE_QVGA :
-    //                           (cameraResolution == "VGA") ? FRAMESIZE_VGA :
-    //                           (cameraResolution == "SVGA") ? FRAMESIZE_SVGA : FRAMESIZE_QVGA;    
+    //                            (cameraResolution == "VGA") ? FRAMESIZE_VGA :
+    //                            (cameraResolution == "SVGA") ? FRAMESIZE_SVGA : FRAMESIZE_QVGA;    
 
     // Initialize the camera with updated config
     esp_err_t err = esp_camera_init(&camera_config);
@@ -972,6 +1013,29 @@ if (!fb) {
     });
 
 
+    server.on("/setMicOnColor", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetMicOnColor(request);
+    });
+
+    server.on("/setMicOffColor", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetMicOffColor(request);
+    });
+
+    server.on("/setMicReadyColor", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetMicReadyColor(request);
+    });
+
+    server.on("/setLedState", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetLedState(request);
+    });
+
+    server.on("/setLedBrightness", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleSetLedBrightness(request);
+    });
+
+    
+
+
     delay(1000); 
 
     // Start the server
@@ -1070,6 +1134,9 @@ if (!fb) {
     xTaskCreatePinnedToCore(streamTask, "Stream Task", 16384, NULL, 1, &streamTaskHandle, 1);
 
     loadSettings();
+
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
 }
 
 void loop() {
@@ -1084,6 +1151,24 @@ void loop() {
 
     // Handle incoming OSC messages
     OscWiFi.update();
+
+    switch (currentMode) {
+        case LED_OFF:
+            turnOffLeds();
+            break;
+        
+        case LED_SOLID:
+            showSolidColor(currentColor);
+            break;
+        
+        case LED_PULSATE:
+            smoothPulsate(currentColor, strip.numPixels());
+            break;
+        
+        // Add more cases for additional behaviors if needed
+    }
+
+
     yield(); // Small delay to prevent WDT resets
     //WiFiClient client = streamServer.available();
     //if (client) {
@@ -1210,4 +1295,4 @@ void loop() {
     
     
     delay(1); // Small delay to prevent WDT resets
-}
+    }

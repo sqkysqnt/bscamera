@@ -5,6 +5,12 @@
 #include "utilities.h"
 #include <U8g2lib.h>
 
+extern String micOnColor;
+extern String micOffColor;
+extern String micReadyColor;
+extern bool ledState;
+extern int ledBrightness;
+
 // Declare the global variable for the current OSC message
 OscMessage currentOscMessage("/dummy");  // Initialize with a dummy address
 
@@ -16,6 +22,7 @@ uint8_t screenBuffer[1024]; // Adjust size based on your screen's memory size
 bool bufferSaved = false;    // Flag to check if the buffer is saved
 
 extern void logSerial(String message);
+extern void hexToRGB(const String &hex, uint8_t &r, uint8_t &g, uint8_t &b);
 
 
 // Reference to the display object
@@ -135,16 +142,56 @@ void displayScreen(String text, bool saveBuffer = false, bool recallBuffer = fal
 void handleMicOn() {
     logSerial("OSC: Mic On");
     displayScreen("Mic On");
+
+    if (ledState){
+      uint8_t r, g, b;
+      hexToRGB(micOnColor, r, g, b);
+      uint32_t colorVariable = strip.Color(r, g, b);
+
+      currentMode = LED_SOLID;
+      currentColor = colorVariable;
+    }
+    else {
+      currentMode = LED_OFF;
+    }    
 }
 
 void handleMicOff() {
     logSerial("OSC: Mic Off");
     displayScreen("Mic Off");
+
+    if (ledState){
+      uint8_t r, g, b;
+      hexToRGB(micOffColor, r, g, b);
+      uint32_t colorVariable = strip.Color(r, g, b);
+
+      currentMode = LED_SOLID;
+      currentColor = colorVariable;
+    }
+    else {
+      currentMode = LED_OFF;
+    }
+
 }
 
 void handleMicReady() {
     logSerial("OSC: Mic Ready");
     displayScreen("Mic Ready");
+
+
+
+    if (ledState){
+      uint8_t r, g, b;
+      hexToRGB(micReadyColor, r, g, b);
+      uint32_t colorVariable = strip.Color(r, g, b);
+
+      currentMode = LED_PULSATE;
+      currentColor = colorVariable;
+    }
+    else {
+      currentMode = LED_OFF;
+    }    
+
 }
 
 void handleStandby() {
@@ -166,7 +213,62 @@ void handleClear() {
     logSerial("OSC: Clear");
     u8g2.clearBuffer();
     u8g2.sendBuffer();
+    if (ledState) {
+      currentMode = LED_OFF;
+    }
+
 }
+
+
+
+
+void handleLedOn(String ledColor) {
+    logSerial("LED Color Arguments: " + ledColor);
+
+    // Resolve the color
+    String hexColor = get_gel_color(ledColor);
+
+    // Check if the color is valid
+    if (hexColor != "#FFFFFF" || ledColor.equalsIgnoreCase("white")) {
+        logSerial("Resolved Hex Color: " + hexColor);
+
+        // Convert the hex color to RGB
+        uint8_t r, g, b;
+        hexToRGB(hexColor, r, g, b);
+        currentColor = strip.Color(r, g, b);
+
+        currentMode = LED_SOLID;
+        showSolidColor(currentColor);
+    } else {
+        logSerial("Invalid color: " + ledColor);
+    }
+}
+
+
+void handleLedOnFromOSC() {
+    if (currentOscMessage.size() > 0) {
+        String ledColor = "";
+        for (int i = 0; i < currentOscMessage.size(); i++) {
+            if (i > 0) ledColor += " ";  // Add space between words
+            ledColor += currentOscMessage.arg<String>(i);
+        }
+        handleLedOn(ledColor);  // Pass the full color name to handleLedOn
+    } else {
+        logSerial("Invalid OSC message: No arguments.");
+    }
+}
+
+
+
+
+
+void handleLedOff() {
+    logSerial("Turning off LEDs");
+    currentMode = LED_OFF;  // Set the mode to off
+    turnOffLeds();  // Turn off all the LEDs off
+}
+
+
 
 void handleDisplay() {
     String displayText = currentOscMessage.arg<String>(0);  // Get the first argument as a string
