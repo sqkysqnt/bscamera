@@ -23,7 +23,8 @@ BSCamera is set to send messages to TheatreChat.
 - **Sender**: Configured as the device name (which is configurable from the web interface)
 - **Message**: Pre determined. Test messages can be sent from the web interface. 
 - **Destination**: The broadcast address on the dhcp subnet (i.e. 192.168.1.255).
-- **Port**: The port is hardcoded to 27900.
+- **Sending Port**: Defaults to 27900. Configurable in web interface.
+- **Receiving Port**: Defaults to 27900. Configurable in web interface.
 
 - **Sound Threshold**: The threshold before a message is triggered. This is an arbitrary unit (i.e. 6000 is enough for me to snap my fingers to trigger it but not the keyboard next to it)
 - **PIR DEBOUNCE**: The time between the PIR triggering and sending messages.
