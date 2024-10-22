@@ -59,14 +59,12 @@ This project utilizes the T-Camera S3 to provide a flexible and customizable cam
 - `/micOn` - Indicates the mic is on
 - `/micOff` - Indicates the mic is off
 - `/micReady` - Indicates the mic is ready
-- `/standby` - Standby status
-- `/go` - Go status
-- `/warning` - Warning status
 - `/display` - Displays a given message on the screen
 - `/clear` - Clears the display
 - `/ledOn` - Turns on the LED with a specified color
-- `/ledOff` - Turns off the LED
 - `/theatrechat/message/*` - Receives TheatreChat messages and processes commands
+
+[More about how to communicate with the device using OSC](https://github.com/sqkysqnt/bscamera/blob/main/docs/theatrechat.md)
 
 ## Default Settings
 
