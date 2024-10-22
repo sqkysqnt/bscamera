@@ -1,8 +1,8 @@
-# T-Camera S3 Project Readme
+# BSCamera (Backstage Camera) Readme
 
 ## Overview
 
-This project utilizes the T-Camera S3 to provide a flexible and customizable camera solution for backstage use in musical theater productions. It includes OSC messaging for mic status updates, IR control, low-latency streaming, and on-screen display capabilities.
+This project utilizes the T-Camera S3 to provide a flexible and customizable camera solution for backstage use in musical theater productions. It includes OSC messaging for mic status updates, IR control, low-latency streaming, and on-screen display capabilities. It was originally created as a way for Audio Engineers to see the cast utilizing out of sightline microphones and as a way for the cast to see if the mic was on or not.
 
 ## Features
 
