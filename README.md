@@ -13,6 +13,9 @@ This project utilizes the T-Camera S3 to provide a flexible and customizable cam
 
 ## Web Endpoints
 
+[For a full list of available web endpoints and usage examples, please refer to the device communication documentation](https://github.com/sqkysqnt/bscamera/blob/main/docs/device_comm_documentation.md).
+
+
 - `/` - Main configuration page
 - `/setCameraMirror` - Sets the camera mirror setting
 - `/setIr` - Turns the IR on/off
