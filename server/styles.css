@@ -1,0 +1,128 @@
+/* CSS Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body, html {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Prevent scrollbars */
+    background-color: #121212; /* Dark background color */
+    color: #e0e0e0; /* Light text color */
+}
+
+/* Auto-hiding toolbar */
+.toolbar {
+    position: fixed;
+    top: 0;
+    left: -220px; /* Start hidden outside of the viewport */
+    width: 220px;
+    height: 100%;
+    background-color: #1e1e1e;
+    transition: left 0.3s ease;
+    z-index: 1000;
+    padding: 20px 10px;
+    box-sizing: border-box;
+    border-right: 2px solid #303030;
+}
+
+.toolbar.visible {
+    left: 0;
+}
+
+/* Hover area to detect mouse movement */
+.toolbar-hover-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 10px; /* Adjust the width as needed */
+    height: 100%;
+    z-index: 999;
+    cursor: pointer;
+}
+
+/* Grid container */
+.grid-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-size: 640px 480px; /* Grid cell size */
+    background-image: linear-gradient(to right, #303030 1px, transparent 1px),
+                      linear-gradient(to bottom, #303030 1px, transparent 1px);
+    background-position: 0 0;
+    z-index: 1;
+}
+
+/* Draggable elements */
+.draggable {
+    position: absolute;
+    width: 640px; /* QVGA width */
+    height: 480px; /* QVGA height */
+    margin: 0;
+    padding: 0;
+    cursor: move;
+    border: none; /* Removed border */
+    background-color: transparent; /* Removed background */
+}
+
+.camera-stream {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+
+.loading-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    border-radius: 5px;
+    display: block;
+}
+
+
+/* Hide controls */
+.controls {
+    display: none;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1920px) and (min-width: 1281px) {
+    .draggable {
+        width: 640px;
+        height: 480px;
+    }
+}
+
+@media (max-width: 1280px) and (min-width: 768px) {
+    .draggable {
+        width: 480px;
+        height: 360px;
+    }
+    .grid-container {
+        background-size: 480px 360px;
+    }
+}
+
+@media (max-width: 767px) {
+    .draggable {
+        width: 320px;
+        height: 240px;
+    }
+    .grid-container {
+        background-size: 320px 240px;
+    }
+}
