@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ESP32-CAM Stream</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <!-- Hover area to detect mouse movement -->
+    <div class="toolbar-hover-area"></div>
+
+    <!-- Auto-hiding toolbar -->
+    <div class="toolbar" id="toolbar">
+        <div class="camera-list">
+            <form id="addCameraForm" action="/add_camera" method="post">
+                <input type="text" id="ipAddress" name="ip_address" placeholder="Enter Camera IP" required>
+                <button type="submit">Add Camera</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Grid container for camera streams -->
+    <div class="grid-container" id="gridContainer">
+        <!-- Camera streams will be dynamically inserted here -->
+    </div>
+
+    <!-- Include your JavaScript file -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
