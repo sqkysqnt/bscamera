@@ -16,12 +16,15 @@
                 <input type="text" id="ipAddress" name="ip_address" placeholder="Enter Camera IP" required>
                 <button type="submit">Add Camera</button>
             </form>
+            <ul id="cameraList">
+                <!-- Camera list items will be dynamically inserted here -->
+            </ul>
         </div>
     </div>
 
-    <!-- Grid container for camera streams -->
-    <div class="grid-container" id="gridContainer">
-        <!-- Camera streams will be dynamically inserted here -->
+    <!-- Container for camera streams -->
+    <div id="cameraContainer" class="camera-container">
+        <!-- MJPEG camera streams will be dynamically inserted here -->
     </div>
 
     <!-- Include your JavaScript file -->
