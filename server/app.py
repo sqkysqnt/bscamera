@@ -12,11 +12,14 @@ import cv2
 
 app = Flask(__name__)
 
+
+
 logging.basicConfig(level=logging.INFO)
 logging.getLogger('eventlet.wsgi').setLevel(logging.ERROR)
 
 CAMERAS_FILE = 'cameras.json'
 LOCK_FILE = 'cameras.lock'
+SCENES_FILE = 'scenes.json'
 
 def load_cameras():
     with FileLock(LOCK_FILE):
@@ -161,6 +164,72 @@ def camera_snapshot(ip_address):
         print(f"Error fetching snapshot from camera {ip_address}: {e}")
         # Return a placeholder image or an error image
         return Response(status=404)
+
+def load_scenes():
+    try:
+        with open(SCENES_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"scenes": [], "lastScene": None}
+
+
+def save_scenes(data):
+    with open(SCENES_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+
+@app.route('/save_scene', methods=['POST'])
+def save_scene():
+    scene_data = request.json
+    scene_number = scene_data['sceneNumber']
+    scene_name = scene_data.get('sceneName', f"Scene {scene_number}")
+
+    scenes = load_scenes()
+
+    # Check for duplicate and prompt for overwrite
+    existing_scene = next((scene for scene in scenes['scenes'] if scene['sceneNumber'] == scene_number), None)
+    if existing_scene:
+        # If overwrite confirmation needed, handle it on the frontend
+        existing_scene.update(scene_data)
+    else:
+        scenes['scenes'].append(scene_data)
+
+    scenes['lastScene'] = scene_number
+    save_scenes(scenes)
+    return jsonify({"status": "success"})
+
+
+@app.route('/load_scene/<int:scene_number>')
+def load_scene(scene_number):
+    scenes = load_scenes()
+    scene = next((scene for scene in scenes['scenes'] if scene['sceneNumber'] == scene_number), None)
+    if scene:
+        return jsonify(scene)
+    else:
+        return jsonify({"error": "Scene not found"}), 404
+
+
+@app.route('/delete_scene/<int:scene_number>', methods=['DELETE'])
+def delete_scene(scene_number):
+    scenes = load_scenes()
+    scenes['scenes'] = [scene for scene in scenes['scenes'] if scene['sceneNumber'] != scene_number]
+    save_scenes(scenes)
+    return jsonify({"status": "success"})
+
+
+@app.route('/get_scenes')
+def get_scenes():
+    scenes = load_scenes()
+    return jsonify(scenes['scenes'])
+
+
+@app.route('/get_last_scene')
+def get_last_scene():
+    scenes = load_scenes()
+    if scenes['lastScene']:
+        return load_scene(scenes['lastScene'])
+    else:
+        return jsonify({"error": "No last scene found"}), 404
 
 
 if __name__ == '__main__':
