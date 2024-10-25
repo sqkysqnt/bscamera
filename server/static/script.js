@@ -14,6 +14,33 @@ let initialMouseX, initialMouseY;
 
 // Function to fetch cameras and render them
 function fetchAndRenderCameras() {
+    fetch('/get_last_scene')
+        .then(response => response.json())
+        .then(scene => {
+            if (scene.error) {
+                // If no last scene, fetch cameras (which might be empty)
+                fetchCameras();
+            } else {
+                // Update current scene label
+                updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+
+                const cameraContainer = document.getElementById('cameraContainer');
+                cameraContainer.innerHTML = ''; // Clear existing content
+
+                scene.cameras.forEach((camera, index) => {
+                    renderCamera(camera, index);
+                });
+
+                // Set up event listeners for dragging and resizing
+                setupEventDelegation();
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching last scene:', error);
+        });
+}
+
+function fetchCameras() {
     fetch('/get_cameras')
         .then(response => response.json())
         .then(cameras => {
@@ -21,36 +48,7 @@ function fetchAndRenderCameras() {
             cameraContainer.innerHTML = ''; // Clear existing content
 
             cameras.forEach((camera, index) => {
-                const draggable = document.createElement('div');
-                draggable.classList.add('draggable');
-                draggable.id = `draggable_${index}`;
-
-                // Set default position and size from the saved data or defaults
-                draggable.style.left = `${camera.position.left || (index % 3) * 350}px`; // Adjust the default positioning if necessary
-                draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
-                draggable.style.width = `${camera.size.width || 320}px`;  // Default width 320
-                draggable.style.height = `${camera.size.height || 240}px`; // Default height 240
-
-                // Create the image element for MJPEG stream
-                const img = document.createElement('img');
-                img.id = `camera_${index}`;
-                img.src = `/camera_stream/${camera.ip}`;
-                img.classList.add('camera-stream');
-
-                // Create overlay for camera label
-                const overlay = document.createElement('div');
-                overlay.classList.add('overlay');
-                fetchCameraSettings(camera.ip, overlay); // Fetch and display the camera name
-
-                // Create a resize handle
-                const resizeHandle = document.createElement('div');
-                resizeHandle.classList.add('resize-handle');
-
-                // Append the image, overlay, and resize handle to the draggable div
-                draggable.appendChild(img);
-                draggable.appendChild(overlay);
-                draggable.appendChild(resizeHandle);
-                cameraContainer.appendChild(draggable);
+                renderCamera(camera, index);
             });
 
             // Set up event listeners for dragging and resizing
@@ -62,9 +60,42 @@ function fetchAndRenderCameras() {
 }
 
 
+function renderCamera(camera, index) {
+    const cameraContainer = document.getElementById('cameraContainer');
 
+    const draggable = document.createElement('div');
+    draggable.classList.add('draggable');
+    draggable.id = `draggable_${index}`;
 
+    if (!camera.visible) draggable.style.display = 'none';
 
+    // Set position and size
+    draggable.style.left = `${camera.position.left || (index % 3) * 350}px`;
+    draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
+    draggable.style.width = `${camera.size.width || 320}px`;
+    draggable.style.height = `${camera.size.height || 240}px`;
+
+    // Create the image element for MJPEG stream
+    const img = document.createElement('img');
+    img.id = `camera_${index}`;
+    img.src = `/camera_stream/${camera.ip}`;
+    img.classList.add('camera-stream');
+
+    // Create overlay for camera label
+    const overlay = document.createElement('div');
+    overlay.classList.add('overlay');
+    fetchCameraSettings(camera.ip, overlay); // Fetch and display the camera name
+
+    // Create a resize handle
+    const resizeHandle = document.createElement('div');
+    resizeHandle.classList.add('resize-handle');
+
+    // Append the image, overlay, and resize handle to the draggable div
+    draggable.appendChild(img);
+    draggable.appendChild(overlay);
+    draggable.appendChild(resizeHandle);
+    cameraContainer.appendChild(draggable);
+}
 
 
 function startImageRefresh() {
@@ -260,9 +291,10 @@ function fetchAndRenderCameraList() {
             const cameraList = document.getElementById('cameraList');
             cameraList.innerHTML = ''; // Clear existing content
 
-            cameras.forEach((camera) => {
+            cameras.forEach((camera, index) => {
                 const listItem = document.createElement('li');
                 listItem.classList.add('camera-item');
+                listItem.dataset.index = index; // Store index to reference the corresponding camera
 
                 // Fetch the camera settings to get the name
                 fetch(`/camera_settings/${camera.ip}`)
@@ -289,9 +321,14 @@ function fetchAndRenderCameraList() {
                         listItem.appendChild(removeButton);
                         cameraList.appendChild(listItem);
 
-                        // Attach event listener for remove button
+                        // Attach event listener for remove button with confirmation
                         removeButton.addEventListener('click', function() {
-                            removeCamera(camera.ip);
+                            confirmCameraRemoval(camera.ip);
+                        });
+
+                        // Attach event listener for toggling camera visibility
+                        listItem.addEventListener('click', function() {
+                            toggleCameraVisibility(index);
                         });
                     })
                     .catch(error => {
@@ -304,6 +341,24 @@ function fetchAndRenderCameraList() {
         });
 }
 
+function confirmCameraRemoval(ip) {
+    const confirmation = confirm("Are you sure you want to delete this camera?");
+    if (confirmation) {
+        removeCamera(ip); // Call the function to remove the camera if confirmed
+    }
+}
+
+// Function to toggle camera visibility based on its index
+function toggleCameraVisibility(index) {
+    const cameraDiv = document.getElementById(`draggable_${index}`);
+    if (cameraDiv) {
+        if (cameraDiv.style.display === 'none') {
+            cameraDiv.style.display = 'block';
+        } else {
+            cameraDiv.style.display = 'none';
+        }
+    }
+}
 
 
 // Function to remove a camera
@@ -496,5 +551,104 @@ function fetchCameraSettings(ip, overlay) {
         });
 }
 
+let currentScene = {};
+
+// Save the current layout as a scene
+function saveScene() {
+    const sceneNumber = prompt("Enter scene number:");
+    const sceneName = prompt("Enter scene name:") || `Scene ${sceneNumber}`;
+
+    const sceneData = {
+        sceneNumber: parseInt(sceneNumber),
+        sceneName: sceneName,
+        cameras: []
+    };
+
+    const cameras = document.querySelectorAll('.draggable');
+    cameras.forEach(camera => {
+        const img = camera.querySelector('img');
+        const ip = img.src.split('/camera_stream/')[1];
+
+        sceneData.cameras.push({
+            ip: ip,
+            position: {
+                left: parseInt(camera.style.left),
+                top: parseInt(camera.style.top)
+            },
+            size: {
+                width: camera.offsetWidth,
+                height: camera.offsetHeight
+            },
+            visible: !camera.classList.contains('hidden')
+        });
+    });
+
+    fetch('/save_scene', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(sceneData)
+    }).then(response => response.json())
+      .then(data => {
+          if (data.status === "success") {
+              alert("Scene saved successfully");
+          }
+      });
+}
+
+// Load a scene
+function loadScene() {
+    const sceneNumber = prompt("Enter scene number to load:");
+
+    fetch(`/load_scene/${sceneNumber}`)
+        .then(response => response.json())
+        .then(scene => {
+            if (scene.error) {
+                alert(scene.error);
+                return;
+            }
+
+            // Update lastScene on the server
+            fetch('/save_scene', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(scene)
+            }).then(() => {
+                // Re-render cameras
+                fetchAndRenderCameras();
+                // Update current scene label
+                updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+            });
+        });
+}
+
+// Delete a scene
+function deleteScene() {
+    const sceneNumber = prompt("Enter scene number to delete:");
+
+    if (confirm(`Are you sure you want to delete scene ${sceneNumber}?`)) {
+        fetch(`/delete_scene/${sceneNumber}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    alert("Scene deleted successfully");
+                }
+            });
+    }
+}
+
+// Update the label in the top-right corner to show the current scene
+function updateCurrentSceneLabel(sceneNumber, sceneName) {
+    const sceneLabel = document.getElementById('sceneLabel');
+    sceneLabel.textContent = `Scene ${sceneNumber}: ${sceneName}`;
+}
+
+// Add buttons to save, load, and delete scenes
+document.getElementById('saveSceneButton').addEventListener('click', saveScene);
+document.getElementById('loadSceneButton').addEventListener('click', loadScene);
+document.getElementById('deleteSceneButton').addEventListener('click', deleteScene);
 
 
