@@ -37,12 +37,17 @@ def save_cameras(cameras):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    scenes = load_scenes()
+    if scenes['lastScene']:
+        last_scene_number = scenes['lastScene']
+    else:
+        last_scene_number = None
+    return render_template('index.html', last_scene_number=last_scene_number)
 
 @app.route('/add_camera', methods=['POST'])
 def add_camera():
     ip_address = request.form.get('ip_address')
-    cameras = load_cameras()
+    cameras = load_current_scene_cameras()
 
     # Check if the camera is already added
     if ip_address and not any(camera['ip'] == ip_address for camera in cameras):
@@ -57,27 +62,27 @@ def add_camera():
             "size": {
                 "width": 320,   # Default width
                 "height": 240   # Default height
-            }
+            },
+            "visible": True
         }
         cameras.append(new_camera)
-        save_cameras(cameras)
+        save_current_scene_cameras(cameras)
     return '', 204  # Return no content since it's an AJAX request
 
 
 
 @app.route('/remove_camera/<ip_address>')
 def remove_camera(ip_address):
-    cameras = load_cameras()
-    if ip_address in cameras:
-        cameras.remove(ip_address)
-        save_cameras(cameras)
+    cameras = load_current_scene_cameras()
+    cameras = [camera for camera in cameras if camera['ip'] != ip_address]
+    save_current_scene_cameras(cameras)
     return '', 204  # Return no content for AJAX request
 
 
 
 @app.route('/get_cameras')
 def get_cameras():
-    cameras = load_cameras()
+    cameras = load_current_scene_cameras()
     return jsonify(cameras)
 
 
@@ -118,7 +123,7 @@ def camera_settings(ip_address):
 def update_camera():
     data = request.json
     ip = data['ip']
-    cameras = load_cameras()
+    cameras = load_current_scene_cameras()
 
     # Find the camera and update position and size
     for camera in cameras:
@@ -127,8 +132,9 @@ def update_camera():
             camera['size'] = data['size']
             break
 
-    save_cameras(cameras)
+    save_current_scene_cameras(cameras)
     return '', 204  # No content response
+
 
 def proxy_stream():
     try:
@@ -172,11 +178,39 @@ def load_scenes():
     except FileNotFoundError:
         return {"scenes": [], "lastScene": None}
 
-
 def save_scenes(data):
     with open(SCENES_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
+def load_current_scene_cameras():
+    scenes = load_scenes()
+    last_scene_number = scenes.get('lastScene')
+    if last_scene_number is None:
+        return []
+    scene = next((scene for scene in scenes['scenes'] if scene['sceneNumber'] == last_scene_number), None)
+    if scene:
+        return scene.get('cameras', [])
+    return []
+
+def save_current_scene_cameras(cameras):
+    scenes = load_scenes()
+    last_scene_number = scenes.get('lastScene')
+    if last_scene_number is None:
+        # If there's no last scene, create one
+        last_scene_number = 1
+        scenes['lastScene'] = last_scene_number
+        scenes['scenes'].append({
+            'sceneNumber': last_scene_number,
+            'sceneName': f"Scene {last_scene_number}",
+            'cameras': cameras
+        })
+    else:
+        # Update the cameras in the current scene
+        for scene in scenes['scenes']:
+            if scene['sceneNumber'] == last_scene_number:
+                scene['cameras'] = cameras
+                break
+    save_scenes(scenes)
 
 @app.route('/save_scene', methods=['POST'])
 def save_scene():
