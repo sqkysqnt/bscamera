@@ -26,10 +26,10 @@ function fetchAndRenderCameras() {
                 draggable.id = `draggable_${index}`;
 
                 // Set default position and size from the saved data or defaults
-                draggable.style.left = `${camera.position.left || (index % 3) * 350}px`; // Adjust the default positioning if necessary
+                draggable.style.left = `${camera.position.left || (index % 3) * 350}px`;
                 draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
-                draggable.style.width = `${camera.size.width || 320}px`;  // Default width 320
-                draggable.style.height = `${camera.size.height || 240}px`; // Default height 240
+                draggable.style.width = `${camera.size.width || 320}px`;
+                draggable.style.height = `${camera.size.height || 240}px`;
 
                 // Create the image element for MJPEG stream
                 const img = document.createElement('img');
@@ -60,6 +60,7 @@ function fetchAndRenderCameras() {
             console.error('Error fetching cameras:', error);
         });
 }
+
 
 
 
@@ -260,9 +261,10 @@ function fetchAndRenderCameraList() {
             const cameraList = document.getElementById('cameraList');
             cameraList.innerHTML = ''; // Clear existing content
 
-            cameras.forEach((camera) => {
+            cameras.forEach((camera, index) => {
                 const listItem = document.createElement('li');
                 listItem.classList.add('camera-item');
+                listItem.dataset.index = index; // Store index to reference the corresponding camera
 
                 // Fetch the camera settings to get the name
                 fetch(`/camera_settings/${camera.ip}`)
@@ -289,9 +291,14 @@ function fetchAndRenderCameraList() {
                         listItem.appendChild(removeButton);
                         cameraList.appendChild(listItem);
 
-                        // Attach event listener for remove button
+                        // Attach event listener for remove button with confirmation
                         removeButton.addEventListener('click', function() {
-                            removeCamera(camera.ip);
+                            confirmCameraRemoval(camera.ip);
+                        });
+
+                        // Attach event listener for toggling camera visibility
+                        listItem.addEventListener('click', function() {
+                            toggleCameraVisibility(index);
                         });
                     })
                     .catch(error => {
@@ -304,6 +311,24 @@ function fetchAndRenderCameraList() {
         });
 }
 
+function confirmCameraRemoval(ip) {
+    const confirmation = confirm("Are you sure you want to delete this camera?");
+    if (confirmation) {
+        removeCamera(ip); // Call the function to remove the camera if confirmed
+    }
+}
+
+// Function to toggle camera visibility based on its index
+function toggleCameraVisibility(index) {
+    const cameraDiv = document.getElementById(`draggable_${index}`);
+    if (cameraDiv) {
+        if (cameraDiv.style.display === 'none') {
+            cameraDiv.style.display = 'block';
+        } else {
+            cameraDiv.style.display = 'none';
+        }
+    }
+}
 
 
 // Function to remove a camera
@@ -496,5 +521,114 @@ function fetchCameraSettings(ip, overlay) {
         });
 }
 
+let currentScene = {};
+
+// Save the current layout as a scene
+function saveScene() {
+    const sceneNumber = prompt("Enter scene number:");
+    const sceneName = prompt("Enter scene name:") || `Scene ${sceneNumber}`;
+
+    const sceneData = {
+        sceneNumber: parseInt(sceneNumber),
+        sceneName: sceneName,
+        cameras: []
+    };
+
+    const cameras = document.querySelectorAll('.draggable');
+    cameras.forEach(camera => {
+        const img = camera.querySelector('img');
+        const ip = img.src.split('/camera_stream/')[1];
+
+        sceneData.cameras.push({
+            ip: ip,
+            position: {
+                left: parseInt(camera.style.left),
+                top: parseInt(camera.style.top)
+            },
+            size: {
+                width: camera.offsetWidth,
+                height: camera.offsetHeight
+            },
+            visible: !camera.classList.contains('hidden')
+        });
+    });
+
+    fetch('/save_scene', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(sceneData)
+    }).then(response => response.json())
+      .then(data => {
+          if (data.status === "success") {
+              alert("Scene saved successfully");
+          }
+      });
+}
+
+// Load a scene
+function loadScene() {
+    const sceneNumber = prompt("Enter scene number to load:");
+    
+    fetch(`/load_scene/${sceneNumber}`)
+        .then(response => response.json())
+        .then(scene => {
+            if (scene.error) {
+                alert(scene.error);
+                return;
+            }
+
+            // Clear current layout
+            document.getElementById('cameraContainer').innerHTML = '';
+
+            // Rebuild camera layout based on the scene
+            scene.cameras.forEach(camera => {
+                const draggable = document.createElement('div');
+                draggable.classList.add('draggable');
+                if (!camera.visible) draggable.classList.add('hidden');
+
+                draggable.style.left = `${camera.position.left}px`;
+                draggable.style.top = `${camera.position.top}px`;
+                draggable.style.width = `${camera.size.width}px`;
+                draggable.style.height = `${camera.size.height}px`;
+
+                const img = document.createElement('img');
+                img.src = `/camera_stream/${camera.ip}`;
+                draggable.appendChild(img);
+
+                document.getElementById('cameraContainer').appendChild(draggable);
+            });
+
+            // Update current scene label
+            updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+        });
+}
+
+// Delete a scene
+function deleteScene() {
+    const sceneNumber = prompt("Enter scene number to delete:");
+
+    if (confirm(`Are you sure you want to delete scene ${sceneNumber}?`)) {
+        fetch(`/delete_scene/${sceneNumber}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    alert("Scene deleted successfully");
+                }
+            });
+    }
+}
+
+// Update the label in the top-right corner to show the current scene
+function updateCurrentSceneLabel(sceneNumber, sceneName) {
+    const sceneLabel = document.getElementById('sceneLabel');
+    sceneLabel.textContent = `Scene ${sceneNumber}: ${sceneName}`;
+}
+
+// Add buttons to save, load, and delete scenes
+document.getElementById('saveSceneButton').addEventListener('click', saveScene);
+document.getElementById('loadSceneButton').addEventListener('click', loadScene);
+document.getElementById('deleteSceneButton').addEventListener('click', deleteScene);
 
 
