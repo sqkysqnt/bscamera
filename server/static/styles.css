@@ -8,8 +8,6 @@
 body, html {
     height: 100%;
     width: 100%;
-    margin: 0;
-    padding: 0;
     overflow: hidden; /* Prevent scrollbars */
     background-color: #121212; /* Dark background color */
     color: #e0e0e0; /* Light text color */
@@ -45,84 +43,96 @@ body, html {
     cursor: pointer;
 }
 
-/* Grid container */
-.grid-container {
+/* Camera container */
+.camera-container {
     position: relative;
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-size: 640px 480px; /* Grid cell size */
-    background-image: linear-gradient(to right, #303030 1px, transparent 1px),
-                      linear-gradient(to bottom, #303030 1px, transparent 1px);
-    background-position: 0 0;
     z-index: 1;
 }
 
 /* Draggable elements */
 .draggable {
     position: absolute;
-    width: 640px; /* QVGA width */
-    height: 480px; /* QVGA height */
-    margin: 0;
-    padding: 0;
     cursor: move;
-    border: none; /* Removed border */
-    background-color: transparent; /* Removed background */
+    border: 1px solid #ccc;
+    background-color: transparent;
+    overflow: hidden; /* Ensures image fits within the div */
 }
 
+/* Camera stream image */
 .camera-stream {
     width: 100%;
     height: 100%;
-    display: block;
-    object-fit: cover;
-    margin: 0;
-    padding: 0;
-    border: none;
+    object-fit: cover; /* Ensure the aspect ratio is maintained */
 }
 
 
-.loading-indicator {
+
+
+/* Overlay */
+.overlay {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Camera Label */
+.camera-label {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    padding: 5px 10px;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
     color: #fff;
-    background: rgba(0, 0, 0, 0.5);
-    padding: 10px;
-    border-radius: 5px;
-    display: block;
+    font-size: 14px;
+    border-radius: 3px;
+    z-index: 3; /* Ensure it appears above other overlay elements */
+    pointer-events: auto; /* Allow label to be clickable */
 }
 
-
-/* Hide controls */
-.controls {
-    display: none;
+/* Styles for camera list in toolbar */
+.camera-list ul {
+    list-style-type: none;
+    padding: 0;
+    margin-top: 20px;
 }
 
-/* Responsive adjustments for smaller screens */
-@media (max-width: 1920px) and (min-width: 1281px) {
-    .draggable {
-        width: 640px;
-        height: 480px;
-    }
+.camera-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
 }
 
-@media (max-width: 1280px) and (min-width: 768px) {
-    .draggable {
-        width: 480px;
-        height: 360px;
-    }
-    .grid-container {
-        background-size: 480px 360px;
-    }
+.camera-item span {
+    flex-grow: 1;
+    color: #e0e0e0;
 }
 
-@media (max-width: 767px) {
-    .draggable {
-        width: 320px;
-        height: 240px;
-    }
-    .grid-container {
-        background-size: 320px 240px;
-    }
+.remove-camera {
+    background-color: transparent;
+    color: red;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.remove-camera:hover {
+    color: darkred;
+}
+
+/* Resize Handle */
+.resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    background-color: rgba(0, 0, 0, 0.5);
+    cursor: se-resize; /* Southeast resize cursor */
 }
