@@ -29,7 +29,9 @@
     <div id="cameraContainer" class="camera-container">
         <!-- MJPEG camera streams will be dynamically inserted here -->
     </div>
-
+    <script>
+        const lastSceneNumber = {{ last_scene_number or 'null' }};
+    </script>
     <!-- Include your JavaScript file -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
