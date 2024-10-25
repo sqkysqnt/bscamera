@@ -14,6 +14,33 @@ let initialMouseX, initialMouseY;
 
 // Function to fetch cameras and render them
 function fetchAndRenderCameras() {
+    fetch('/get_last_scene')
+        .then(response => response.json())
+        .then(scene => {
+            if (scene.error) {
+                // If no last scene, fetch cameras (which might be empty)
+                fetchCameras();
+            } else {
+                // Update current scene label
+                updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+
+                const cameraContainer = document.getElementById('cameraContainer');
+                cameraContainer.innerHTML = ''; // Clear existing content
+
+                scene.cameras.forEach((camera, index) => {
+                    renderCamera(camera, index);
+                });
+
+                // Set up event listeners for dragging and resizing
+                setupEventDelegation();
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching last scene:', error);
+        });
+}
+
+function fetchCameras() {
     fetch('/get_cameras')
         .then(response => response.json())
         .then(cameras => {
@@ -21,36 +48,7 @@ function fetchAndRenderCameras() {
             cameraContainer.innerHTML = ''; // Clear existing content
 
             cameras.forEach((camera, index) => {
-                const draggable = document.createElement('div');
-                draggable.classList.add('draggable');
-                draggable.id = `draggable_${index}`;
-
-                // Set default position and size from the saved data or defaults
-                draggable.style.left = `${camera.position.left || (index % 3) * 350}px`;
-                draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
-                draggable.style.width = `${camera.size.width || 320}px`;
-                draggable.style.height = `${camera.size.height || 240}px`;
-
-                // Create the image element for MJPEG stream
-                const img = document.createElement('img');
-                img.id = `camera_${index}`;
-                img.src = `/camera_stream/${camera.ip}`;
-                img.classList.add('camera-stream');
-
-                // Create overlay for camera label
-                const overlay = document.createElement('div');
-                overlay.classList.add('overlay');
-                fetchCameraSettings(camera.ip, overlay); // Fetch and display the camera name
-
-                // Create a resize handle
-                const resizeHandle = document.createElement('div');
-                resizeHandle.classList.add('resize-handle');
-
-                // Append the image, overlay, and resize handle to the draggable div
-                draggable.appendChild(img);
-                draggable.appendChild(overlay);
-                draggable.appendChild(resizeHandle);
-                cameraContainer.appendChild(draggable);
+                renderCamera(camera, index);
             });
 
             // Set up event listeners for dragging and resizing
@@ -62,10 +60,42 @@ function fetchAndRenderCameras() {
 }
 
 
+function renderCamera(camera, index) {
+    const cameraContainer = document.getElementById('cameraContainer');
 
+    const draggable = document.createElement('div');
+    draggable.classList.add('draggable');
+    draggable.id = `draggable_${index}`;
 
+    if (!camera.visible) draggable.style.display = 'none';
 
+    // Set position and size
+    draggable.style.left = `${camera.position.left || (index % 3) * 350}px`;
+    draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
+    draggable.style.width = `${camera.size.width || 320}px`;
+    draggable.style.height = `${camera.size.height || 240}px`;
 
+    // Create the image element for MJPEG stream
+    const img = document.createElement('img');
+    img.id = `camera_${index}`;
+    img.src = `/camera_stream/${camera.ip}`;
+    img.classList.add('camera-stream');
+
+    // Create overlay for camera label
+    const overlay = document.createElement('div');
+    overlay.classList.add('overlay');
+    fetchCameraSettings(camera.ip, overlay); // Fetch and display the camera name
+
+    // Create a resize handle
+    const resizeHandle = document.createElement('div');
+    resizeHandle.classList.add('resize-handle');
+
+    // Append the image, overlay, and resize handle to the draggable div
+    draggable.appendChild(img);
+    draggable.appendChild(overlay);
+    draggable.appendChild(resizeHandle);
+    cameraContainer.appendChild(draggable);
+}
 
 
 function startImageRefresh() {
@@ -570,7 +600,7 @@ function saveScene() {
 // Load a scene
 function loadScene() {
     const sceneNumber = prompt("Enter scene number to load:");
-    
+
     fetch(`/load_scene/${sceneNumber}`)
         .then(response => response.json())
         .then(scene => {
@@ -579,29 +609,19 @@ function loadScene() {
                 return;
             }
 
-            // Clear current layout
-            document.getElementById('cameraContainer').innerHTML = '';
-
-            // Rebuild camera layout based on the scene
-            scene.cameras.forEach(camera => {
-                const draggable = document.createElement('div');
-                draggable.classList.add('draggable');
-                if (!camera.visible) draggable.classList.add('hidden');
-
-                draggable.style.left = `${camera.position.left}px`;
-                draggable.style.top = `${camera.position.top}px`;
-                draggable.style.width = `${camera.size.width}px`;
-                draggable.style.height = `${camera.size.height}px`;
-
-                const img = document.createElement('img');
-                img.src = `/camera_stream/${camera.ip}`;
-                draggable.appendChild(img);
-
-                document.getElementById('cameraContainer').appendChild(draggable);
+            // Update lastScene on the server
+            fetch('/save_scene', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(scene)
+            }).then(() => {
+                // Re-render cameras
+                fetchAndRenderCameras();
+                // Update current scene label
+                updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
             });
-
-            // Update current scene label
-            updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
         });
 }
 
