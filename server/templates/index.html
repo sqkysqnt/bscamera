@@ -16,12 +16,16 @@
                 <input type="text" id="ipAddress" name="ip_address" placeholder="Enter Camera IP" required>
                 <button type="submit">Add Camera</button>
             </form>
+            <br>
+            <div id="cameraListTitle">Active Cameras</div>
             <ul id="cameraList">
                 <!-- Camera list items will be dynamically inserted here -->
             </ul>
-            <button id="saveSceneButton">Save Scene</button>
-            <button id="loadSceneButton">Load Scene</button>
-            <button id="deleteSceneButton">Delete Scene</button>
+            <div class="toolbar-buttons">
+                <button id="saveSceneButton">Save Scene</button>
+                <button id="loadSceneButton">Load Scene</button>
+                <button id="deleteSceneButton">Delete Scene</button>
+            </div>
         </div>
     </div>
     <div id="sceneLabel" style="position: absolute; top: 10px; right: 10px; color: white;"></div>
