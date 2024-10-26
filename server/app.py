@@ -219,7 +219,7 @@ def get_cameras():
 @app.route('/camera_stream/<ip_address>')
 def camera_stream(ip_address):
     stream_url = f'http://{ip_address}:81/'  # Camera MJPEG stream endpoint
-
+    
     def generate():
         try:
             with requests.get(stream_url, stream=True, timeout=10) as r:
@@ -230,8 +230,9 @@ def camera_stream(ip_address):
             print(f"Error proxying camera {ip_address}: {e}")
         except Exception as e:
             print(f"Unexpected error in proxy_stream: {e}")
-
+    
     return Response(stream_with_context(generate()), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 
 from flask import jsonify
