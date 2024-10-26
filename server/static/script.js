@@ -879,6 +879,93 @@ function refreshSceneLayout(sceneData) {
 
 
 
+
+// Make scene label clickable
+document.getElementById('sceneLabel').addEventListener('click', function() {
+    showSceneSelectionModal();
+});
+
+// Function to show the scene selection modal
+function showSceneSelectionModal() {
+    // Fetch scenes from the server
+    fetch('/get_scenes')
+        .then(response => response.json())
+        .then(scenes => {
+            // Sort scenes by sceneNumber
+            scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
+            
+            // Get the sceneList element
+            const sceneList = document.getElementById('sceneList');
+            sceneList.innerHTML = ''; // Clear existing content
+            
+            // Populate the scene list
+            scenes.forEach(scene => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Scene ${scene.sceneNumber}: ${scene.sceneName}`;
+                listItem.dataset.sceneNumber = scene.sceneNumber;
+                sceneList.appendChild(listItem);
+                
+                // Add click event to load the scene
+                listItem.addEventListener('click', function() {
+                    loadScene(scene.sceneNumber);
+                    closeSceneSelectionModal();
+                });
+            });
+            
+            // Show the modal
+            document.getElementById('sceneSelectionModal').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error fetching scenes:', error);
+        });
+}
+
+
+
+// Function to close the modal
+function closeSceneSelectionModal() {
+    document.getElementById('sceneSelectionModal').style.display = 'none';
+}
+
+
+
+
+function loadScene(sceneNumber) {
+    fetch(`/load_scene/${sceneNumber}`)
+        .then(response => response.json())
+        .then(scene => {
+            if (scene.error) {
+                alert(scene.error);
+                return;
+            }
+
+            // Clear current layout
+            document.getElementById('cameraContainer').innerHTML = '';
+
+            // Rebuild camera layout based on the scene
+            scene.cameras.forEach((camera, index) => {
+                renderCamera(camera, index);
+            });
+
+            // Update the camera list in the toolbar
+            updateCameraList(scene.cameras);
+
+            // Update current scene label
+            updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+
+            // Re-attach event listeners
+            setupEventDelegation();
+            setupResizeFunctionality();
+        })
+        .catch(error => {
+            console.error('Error loading scene:', error);
+        });
+}
+
+
+
+
+
 // Call pollForSceneUpdates on page load to start polling
 window.onload = function() {
     fetchAndRenderCameras();
@@ -897,5 +984,22 @@ window.onload = function() {
 
     toolbar.addEventListener('mouseleave', () => {
         toolbar.classList.remove('visible');
+    });
+
+    document.getElementById('sceneLabel').addEventListener('click', function() {
+        showSceneSelectionModal();
+    });
+
+    // Close button event listener
+    document.getElementById('closeSceneModal').addEventListener('click', function() {
+        closeSceneSelectionModal();
+    });
+
+    // Close modal when clicking outside the modal content
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('sceneSelectionModal');
+        if (event.target == modal) {
+            closeSceneSelectionModal();
+        }
     });
 };
