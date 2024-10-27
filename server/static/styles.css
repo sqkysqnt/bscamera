@@ -323,3 +323,47 @@ body, html {
     background-color: #2c2c2c;
 }
 
+/* Battery icon styles */
+.battery-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 35px;
+    height: 35px;
+    object-fit: contain;
+    background-size: 100% 100%;
+    border-radius: 3px;
+    padding: 2px 2px;
+    background-color: rgba(172, 172, 172, 0.5); /* Semi-transparent background */
+}
+
+
+
+
+
+
+.battery-charging {
+    background: url('/static/images/battery_charging.png') no-repeat center center;
+}
+
+.battery-full {
+    background: url('/static/images/battery_100.png') no-repeat center center;
+}
+
+.battery-75 {
+    background: url('/static/images/battery_75.png') no-repeat center center;
+}
+
+.battery-50 {
+    background: url('/static/images/battery_50.png') no-repeat center center;
+}
+
+.battery-25 {
+    background: url('/static/images/battery_25.png') no-repeat center center;
+}
+
+.battery-empty {
+    background: url('/static/images/battery_empty.png') no-repeat center center;
+}
+
+}
