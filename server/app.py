@@ -233,7 +233,24 @@ def camera_stream(ip_address):
     
     return Response(stream_with_context(generate()), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/get_battery_percentage/<ip_address>')
+def get_battery_percentage(ip_address):
+    print(f"Fetching battery percentage for {ip_address}")  # Add logging here
+    battery_url = f'http://{ip_address}/getBatteryPercentage'
+    try:
+        response = requests.get(battery_url, timeout=5)
+        response.raise_for_status()
+        battery_data = response.text.strip()
+        print(f"Battery for camera {ip_address}: {battery_data}")
+        return battery_data
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching battery status from camera {ip_address}: {e}")
+        return "N/A"
 
+
+@app.route('/getBatteryPercentage/<ip_address>')
+def getBatteryPercentage(ip_address):
+    return get_battery_percentage(ip_address)  # Call the existing function
 
 from flask import jsonify
 
