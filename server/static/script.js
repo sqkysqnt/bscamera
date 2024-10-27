@@ -573,32 +573,60 @@ function stopDragOrResize(e) {
 }
 
 // Fetch camera settings for label overlay
-// Fetch camera settings for label overlay
 function fetchCameraSettings(ip, overlay) {
     fetch(`/camera_settings/${ip}`)
         .then(response => response.json())
         .then(settings => {
             const theatreChatName = settings.theatreChatName || 'Unnamed Camera';
 
-            // Create a clickable link element for the label
+            // Create a clickable label for the camera name
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = theatreChatName;
             label.href = `http://${ip}/`;  // Set the link to the camera's IP address
             label.target = '_blank';  // Open in a new tab
-            label.style.textDecoration = 'none';  // Remove underline for link
-            label.style.color = '#fff';  // Ensure text is white
+            label.style.textDecoration = 'none';
+            label.style.color = '#fff';
 
-            // Ensure the label can be clicked without interference
-            label.style.pointerEvents = 'auto'; // Enable pointer events
-
-            // Append the clickable label to the overlay
             overlay.appendChild(label);
+
+            // Now fetch battery status and add the battery icon
+            fetch(`/get_battery_percentage/${ip}`)
+            .then(response => response.text())
+            .then(batteryStatus => {
+                console.log(`Battery status for ${ip}: ${batteryStatus}`);
+                const batteryIcon = document.createElement('img'); // Change from <div> to <img>
+                batteryIcon.classList.add('battery-icon');
+        
+                // Set the appropriate image based on battery percentage
+                if (batteryStatus === 'N/A') {
+                    batteryIcon.src = '/static/images/battery_charging.png'; // Charging icon
+                } else {
+                    const batteryPercentage = parseInt(batteryStatus, 10);
+                    if (batteryPercentage >= 90) {
+                        batteryIcon.src = '/static/images/battery_100.png'; // 100% battery
+                    } else if (batteryPercentage >= 65) {
+                        batteryIcon.src = '/static/images/battery_75.png'; // 75% battery
+                    } else if (batteryPercentage >= 40) {
+                        batteryIcon.src = '/static/images/battery_50.png'; // 50% battery
+                    } else if (batteryPercentage >= 20) {
+                        batteryIcon.src = '/static/images/battery_25.png'; // 25% battery
+                    } else {
+                        batteryIcon.src = '/static/images/battery_empty.png'; // Empty battery
+                    }
+                }
+        
+                // Append the battery icon to the overlay
+                overlay.appendChild(batteryIcon);
+            })
+            .catch(error => {
+                console.error(`Error fetching battery status from camera ${ip}:`, error);
+            });
         })
         .catch(error => {
             console.error(`Error fetching settings from camera ${ip}:`, error);
 
-            // Handle errors by displaying a default name as a clickable link
+            // Display a default name and no battery status in case of error
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = 'Camera';
@@ -606,11 +634,11 @@ function fetchCameraSettings(ip, overlay) {
             label.target = '_blank';
             label.style.textDecoration = 'none';
             label.style.color = '#fff';
-            label.style.pointerEvents = 'auto'; // Enable pointer events
 
             overlay.appendChild(label);
         });
 }
+
 
 let currentScene = {};
 
