@@ -16,15 +16,31 @@
                 <input type="text" id="ipAddress" name="ip_address" placeholder="Enter Camera IP" required>
                 <button type="submit">Add Camera</button>
             </form>
+            <br>
+            <div id="cameraListTitle">Active Cameras</div>
             <ul id="cameraList">
                 <!-- Camera list items will be dynamically inserted here -->
             </ul>
-            <button id="saveSceneButton">Save Scene</button>
-            <button id="loadSceneButton">Load Scene</button>
-            <button id="deleteSceneButton">Delete Scene</button>
+            <div class="toolbar-buttons">
+                <button id="saveSceneButton">Save Scene</button>
+                <button id="loadSceneButton">Load Scene</button>
+                <button id="deleteSceneButton">Delete Scene</button>
+            </div>
         </div>
     </div>
-    <div id="sceneLabel" style="position: absolute; top: 10px; right: 10px; color: white;"></div>
+    <div id="sceneLabel" class="clickable-label"></div>
+    <!-- <div id="sceneLabel" style="position: absolute; top: 10px; right: 10px; color: white;"></div> -->
+    <!-- Scene Selection Modal -->
+    <div id="sceneSelectionModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closeSceneModal">&times;</span>
+            <h2>Select a Scene</h2>
+            <ul id="sceneList">
+                <!-- Scene list items will be dynamically inserted here -->
+            </ul>
+        </div>
+    </div>
+
     <!-- Container for camera streams -->
     <div id="cameraContainer" class="camera-container">
         <!-- MJPEG camera streams will be dynamically inserted here -->

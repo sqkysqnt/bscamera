@@ -11,14 +11,73 @@ body, html {
     overflow: hidden; /* Prevent scrollbars */
     background-color: #121212; /* Dark background color */
     color: #e0e0e0; /* Light text color */
+    font-family: 'Arial', sans-serif; /* Change font family */
+    font-size: 16px; /* Adjust font size for better readability */
 }
+
+#cameraListTitle {
+    font-size: 18px;
+    font-weight: bold;
+    color: #e0e0e0;
+    margin-bottom: 15px; /* Add space below the title */
+}
+
+#addCameraForm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Space between input and button */
+    margin-bottom: 20px; /* Add space below the form */
+}
+
+#ipAddress {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border: none;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+}
+
+#ipAddress::placeholder {
+    color: #b0b0b0; /* Placeholder color */
+}
+
+#ipAddress:focus {
+    outline: none;
+    background-color: #3c3c3c; /* Change background color on focus */
+}
+
+/* Style for the Add Camera button */
+#addCameraForm button {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+#addCameraForm button:hover {
+    background-color: #3c3c3c;
+}
+
+.name-ip-container {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+}
+
 
 /* Auto-hiding toolbar */
 .toolbar {
     position: fixed;
     top: 0;
-    left: -220px; /* Start hidden outside of the viewport */
-    width: 220px;
+    left: -300px; /* Adjusted to the new width */
+    width: 300px; /* Increased width */
     height: 100%;
     background-color: #1e1e1e;
     transition: left 0.3s ease;
@@ -32,16 +91,27 @@ body, html {
     left: 0;
 }
 
-/* Hover area to detect mouse movement */
+/* Hover area to detect mouse movement 
 .toolbar-hover-area {
     position: fixed;
     top: 0;
     left: 0;
-    width: 10px; /* Adjust the width as needed */
+    width: 10px; /* Adjust the width as needed 
     height: 100%;
     z-index: 999;
     cursor: pointer;
+}*/
+
+.toolbar-hover-area {
+    /* background-color: rgba(255, 0, 0, 0.2); /* Red for debugging */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 10px; /* Ensure it's wide enough to detect the hover */
+    height: 100%;
+    z-index: 999;
 }
+
 
 /* Camera container */
 .camera-container {
@@ -100,15 +170,22 @@ body, html {
 .camera-list ul {
     list-style-type: none;
     padding: 0;
-    margin-top: 20px;
+    margin: 0;
 }
 
 .camera-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    pointer-events: auto; /* Allow label to be clickable */
+    padding: 5px 0; /* Add some padding for the items */
+    margin-bottom: 10px; /* Add space between each camera item */
+}
+
+.camera-item .camera-name {
+    flex: 2; /* Allow the name to take up more space */
+    padding-right: 10px; /* Add space between name and IP */
+    text-align: left; /* Align names to the left */
+    color: #e0e0e0;
 }
 
 .camera-item span {
@@ -116,7 +193,14 @@ body, html {
     color: #e0e0e0;
 }
 
+.camera-item .camera-ip {
+    flex: 1; /* IP address takes up less space */
+    text-align: right; /* Align IPs to the right */
+    color: #b0b0b0; /* Slightly different color for IP */
+}
+
 .remove-camera {
+    margin-left: 10px; /* Add some space between IP and the button */
     background-color: transparent;
     color: red;
     border: none;
@@ -137,4 +221,149 @@ body, html {
     height: 20px;
     background-color: rgba(0, 0, 0, 0.5);
     cursor: se-resize; /* Southeast resize cursor */
+}
+
+/* Styles for buttons at the bottom of the toolbar */
+.toolbar-buttons {
+    position: absolute;
+    bottom: 20px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Space between buttons */
+}
+
+.toolbar-buttons button {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.toolbar-buttons button:hover {
+    background-color: #3c3c3c;
+}
+
+.hidden-camera {
+    text-decoration: line-through;
+    font-style: italic;
+}
+
+/* Make the scene label appear clickable */
+.clickable-label {
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+/* Modal styles */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 2000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+}
+
+#sceneLabel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: white;
+    z-index: 1000; /* Ensure it's on top */
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.modal-content {
+    background-color: #1e1e1e;
+    margin: 10% auto; /* Centered */
+    padding: 20px;
+    border: 1px solid #888;
+    width: 300px;
+    color: #e0e0e0;
+    border-radius: 5px;
+}
+
+.close-button {
+    color: #aaaaaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: #ffffff;
+    text-decoration: none;
+}
+
+#sceneList {
+    list-style-type: none;
+    padding: 0;
+    margin-top: 20px;
+}
+
+#sceneList li {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #303030;
+}
+
+#sceneList li:hover {
+    background-color: #2c2c2c;
+}
+
+/* Battery icon styles */
+.battery-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 35px;
+    height: 35px;
+    object-fit: contain;
+    background-size: 100% 100%;
+    border-radius: 3px;
+    padding: 2px 2px;
+    background-color: rgba(172, 172, 172, 0.5); /* Semi-transparent background */
+}
+
+
+
+
+
+
+.battery-charging {
+    background: url('/static/images/battery_charging.png') no-repeat center center;
+}
+
+.battery-full {
+    background: url('/static/images/battery_100.png') no-repeat center center;
+}
+
+.battery-75 {
+    background: url('/static/images/battery_75.png') no-repeat center center;
+}
+
+.battery-50 {
+    background: url('/static/images/battery_50.png') no-repeat center center;
+}
+
+.battery-25 {
+    background: url('/static/images/battery_25.png') no-repeat center center;
+}
+
+.battery-empty {
+    background: url('/static/images/battery_empty.png') no-repeat center center;
+}
+
 }

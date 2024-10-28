@@ -17,28 +17,43 @@ function fetchAndRenderCameras() {
     fetch('/get_last_scene')
         .then(response => response.json())
         .then(scene => {
+            console.log("Scene data received:", scene);
             if (scene.error) {
-                // If no last scene, fetch cameras (which might be empty)
-                fetchCameras();
+                fetchCameras();  // If no last scene, fetch default cameras
             } else {
                 // Update current scene label
                 updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
 
                 const cameraContainer = document.getElementById('cameraContainer');
-                cameraContainer.innerHTML = ''; // Clear existing content
+                cameraContainer.innerHTML = '';  // Clear existing content
 
                 scene.cameras.forEach((camera, index) => {
+                    // Make sure the camera name is rendered
                     renderCamera(camera, index);
                 });
 
-                // Set up event listeners for dragging and resizing
-                setupEventDelegation();
+                setupEventDelegation();  // Set up drag/resize events
             }
         })
         .catch(error => {
             console.error('Error fetching last scene:', error);
         });
 }
+
+
+
+//function fetchAndRenderCameras(scene) {
+//    const cameraContainer = document.getElementById('cameraContainer');
+//    cameraContainer.innerHTML = ''; // Clear existing content
+//
+//    scene.cameras.forEach((camera, index) => {
+//        renderCamera(camera, index);
+//    });
+//
+//    // Update the camera list
+//    updateCameraList(scene.cameras);
+//}
+
 
 function fetchCameras() {
     fetch('/get_cameras')
@@ -84,18 +99,37 @@ function renderCamera(camera, index) {
     // Create overlay for camera label
     const overlay = document.createElement('div');
     overlay.classList.add('overlay');
-    fetchCameraSettings(camera.ip, overlay); // Fetch and display the camera name
 
-    // Create a resize handle
-    const resizeHandle = document.createElement('div');
-    resizeHandle.classList.add('resize-handle');
+    // Ensure the name is maintained from the camera object if already set
+    const cameraName = camera.name || 'Unnamed Camera';  // Use camera name if it exists
 
-    // Append the image, overlay, and resize handle to the draggable div
+    // Create label element for the camera name
+    const label = document.createElement('a');
+    label.classList.add('camera-label');
+    label.textContent = cameraName;  // Set the name from the camera object
+    label.href = `http://${camera.ip}/`;  // Set the link to the camera's IP address
+    label.target = '_blank';  // Open in a new tab
+    label.style.textDecoration = 'none';  // Remove underline for link
+    label.style.color = '#fff';  // Ensure text is white
+
+    // Append label to the overlay
+    overlay.appendChild(label);
+
+    // Append the image, overlay to the draggable div
     draggable.appendChild(img);
     draggable.appendChild(overlay);
-    draggable.appendChild(resizeHandle);
+
+    // Append the draggable element to the camera container
     cameraContainer.appendChild(draggable);
+
+    // Add a resize handle for resizing functionality
+    const resizeHandle = document.createElement('div');
+    resizeHandle.classList.add('resize-handle');
+    draggable.appendChild(resizeHandle);
 }
+
+
+
 
 
 function startImageRefresh() {
@@ -116,18 +150,19 @@ function setupEventDelegation() {
 
     cameraContainer.addEventListener('mousedown', function(e) {
         if (e.target.classList.contains('resize-handle')) {
-            resizeStart(e, e.target.parentElement); // Start resizing if clicking the resize handle
+            resizeStart(e, e.target.parentElement);
         } else {
             const draggable = e.target.closest('.draggable');
             if (draggable) {
-                dragStart(e, draggable); // Otherwise start dragging
+                dragStart(e, draggable);
             }
         }
     });
 
-    window.addEventListener('mousemove', dragOrResize); // Handle both dragging and resizing
-    window.addEventListener('mouseup', stopDragOrResize); // End drag or resize
+    window.addEventListener('mousemove', dragOrResize);
+    window.addEventListener('mouseup', stopDragOrResize);
 }
+
 
 
 // Use event delegation for dragging
@@ -284,62 +319,67 @@ function monitorImages() {
 
 
 // Function to fetch and render the camera list in the toolbar
-function fetchAndRenderCameraList() {
-    fetch('/get_cameras')
-        .then(response => response.json())
-        .then(cameras => {
-            const cameraList = document.getElementById('cameraList');
-            cameraList.innerHTML = ''; // Clear existing content
+async function fetchAndRenderCameraList() {
+    try {
+        const response = await fetch('/get_cameras');
+        const cameras = await response.json();
 
-            cameras.forEach((camera, index) => {
-                const listItem = document.createElement('li');
-                listItem.classList.add('camera-item');
-                listItem.dataset.index = index; // Store index to reference the corresponding camera
+        const cameraList = document.getElementById('cameraList');
+        cameraList.innerHTML = ''; // Clear existing content
 
-                // Fetch the camera settings to get the name
-                fetch(`/camera_settings/${camera.ip}`)
-                    .then(response => response.json())
-                    .then(settings => {
-                        const cameraName = settings.theatreChatName || 'Unnamed Camera'; // Get name from settings or use default
+        for (const [index, camera] of cameras.entries()) {
+            const listItem = document.createElement('li');
+            listItem.classList.add('camera-item');
+            listItem.dataset.index = index;
 
-                        const nameSpan = document.createElement('span');
-                        nameSpan.classList.add('camera-name');
-                        nameSpan.textContent = cameraName;
+            const nameSpan = document.createElement('span');
+            nameSpan.classList.add('camera-name');
+            nameSpan.textContent = 'Loading...';
 
-                        const ipSpan = document.createElement('span');
-                        ipSpan.classList.add('camera-ip');
-                        ipSpan.textContent = camera.ip;
+            const ipSpan = document.createElement('span');
+            ipSpan.classList.add('camera-ip');
+            ipSpan.textContent = camera.ip;
 
-                        const removeButton = document.createElement('button');
-                        removeButton.classList.add('remove-camera');
-                        removeButton.textContent = 'X';
-                        removeButton.dataset.ip = camera.ip;
+            if (!camera.visible) {
+                nameSpan.classList.add('hidden-camera');
+            }
 
-                        listItem.appendChild(nameSpan);
-                        listItem.appendChild(document.createElement('br')); // Line break between name and IP
-                        listItem.appendChild(ipSpan);
-                        listItem.appendChild(removeButton);
-                        cameraList.appendChild(listItem);
+            const removeButton = document.createElement('button');
+            removeButton.classList.add('remove-camera');
+            removeButton.textContent = 'X';
+            removeButton.dataset.ip = camera.ip;
 
-                        // Attach event listener for remove button with confirmation
-                        removeButton.addEventListener('click', function() {
-                            confirmCameraRemoval(camera.ip);
-                        });
+            listItem.appendChild(nameSpan);
+            listItem.appendChild(document.createElement('br'));
+            listItem.appendChild(ipSpan);
+            listItem.appendChild(removeButton);
+            cameraList.appendChild(listItem);
 
-                        // Attach event listener for toggling camera visibility
-                        listItem.addEventListener('click', function() {
-                            toggleCameraVisibility(index);
-                        });
-                    })
-                    .catch(error => {
-                        console.error(`Error fetching settings for camera ${camera.ip}:`, error);
-                    });
+            removeButton.addEventListener('click', function () {
+                confirmCameraRemoval(camera.ip);
             });
-        })
-        .catch(error => {
-            console.error('Error fetching camera list:', error);
-        });
+
+            listItem.addEventListener('click', function () {
+                toggleCameraVisibility(index);
+            });
+
+            try {
+                const settingsResponse = await fetch(`/camera_settings/${camera.ip}`);
+                const settings = await settingsResponse.json();
+                const cameraName = settings.theatreChatName || 'Unnamed Camera';
+                nameSpan.textContent = cameraName;
+            } catch (error) {
+                console.error(`Error fetching settings for camera ${camera.ip}:`, error);
+                nameSpan.textContent = 'Unnamed Camera';
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching camera list:', error);
+    }
 }
+
+
+
 
 function confirmCameraRemoval(ip) {
     const confirmation = confirm("Are you sure you want to delete this camera?");
@@ -351,14 +391,55 @@ function confirmCameraRemoval(ip) {
 // Function to toggle camera visibility based on its index
 function toggleCameraVisibility(index) {
     const cameraDiv = document.getElementById(`draggable_${index}`);
+    const cameraListItem = document.querySelector(`[data-index="${index}"] .camera-name`);
+    
+    let isVisible;
     if (cameraDiv) {
         if (cameraDiv.style.display === 'none') {
             cameraDiv.style.display = 'block';
+            cameraListItem.classList.remove('hidden-camera'); // Remove strikethrough
+            isVisible = true;
         } else {
             cameraDiv.style.display = 'none';
+            cameraListItem.classList.add('hidden-camera'); // Add strikethrough
+            isVisible = false;
         }
+
+        // Update the camera visibility in the current scene
+        updateCameraVisibility(index, isVisible);
     }
 }
+
+
+// Function to update camera visibility in the scene and save
+function updateCameraVisibility(index, isVisible) {
+    // Get the IP address of the camera
+    const camera = document.getElementById(`camera_${index}`);
+    const ip = camera.src.split('/camera_stream/')[1];
+
+    // Send the updated visibility to the server
+    fetch('/update_camera_visibility', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            ip: ip,
+            visible: isVisible
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log('Camera visibility updated');
+        } else {
+            console.error('Failed to update camera visibility');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating camera visibility:', error);
+    });
+}
+
 
 
 // Function to remove a camera
@@ -378,26 +459,6 @@ function removeCamera(ip) {
             console.error('Error removing camera:', error);
         });
 }
-
-// Call functions on page load
-window.onload = function() {
-    fetchAndRenderCameras();
-    fetchAndRenderCameraList();
-    setupEventDelegation();
-    setupResizeFunctionality(); // Initialize resize functionality
-
-    // Auto-hiding toolbar functionality
-    const toolbar = document.getElementById('toolbar');
-    const hoverArea = document.querySelector('.toolbar-hover-area');
-
-    hoverArea.addEventListener('mouseenter', () => {
-        toolbar.classList.add('visible');
-    });
-
-    toolbar.addEventListener('mouseleave', () => {
-        toolbar.classList.remove('visible');
-    });
-};
 
 function setupResizeFunctionality() {
     const cameraContainer = document.getElementById('cameraContainer');
@@ -512,32 +573,60 @@ function stopDragOrResize(e) {
 }
 
 // Fetch camera settings for label overlay
-// Fetch camera settings for label overlay
 function fetchCameraSettings(ip, overlay) {
     fetch(`/camera_settings/${ip}`)
         .then(response => response.json())
         .then(settings => {
             const theatreChatName = settings.theatreChatName || 'Unnamed Camera';
 
-            // Create a clickable link element for the label
+            // Create a clickable label for the camera name
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = theatreChatName;
             label.href = `http://${ip}/`;  // Set the link to the camera's IP address
             label.target = '_blank';  // Open in a new tab
-            label.style.textDecoration = 'none';  // Remove underline for link
-            label.style.color = '#fff';  // Ensure text is white
+            label.style.textDecoration = 'none';
+            label.style.color = '#fff';
 
-            // Ensure the label can be clicked without interference
-            label.style.pointerEvents = 'auto'; // Enable pointer events
-
-            // Append the clickable label to the overlay
             overlay.appendChild(label);
+
+            // Now fetch battery status and add the battery icon
+            fetch(`/get_battery_percentage/${ip}`)
+            .then(response => response.text())
+            .then(batteryStatus => {
+                console.log(`Battery status for ${ip}: ${batteryStatus}`);
+                const batteryIcon = document.createElement('img'); // Change from <div> to <img>
+                batteryIcon.classList.add('battery-icon');
+        
+                // Set the appropriate image based on battery percentage
+                if (batteryStatus === 'N/A') {
+                    batteryIcon.src = '/static/images/battery_charging.png'; // Charging icon
+                } else {
+                    const batteryPercentage = parseInt(batteryStatus, 10);
+                    if (batteryPercentage >= 90) {
+                        batteryIcon.src = '/static/images/battery_100.png'; // 100% battery
+                    } else if (batteryPercentage >= 65) {
+                        batteryIcon.src = '/static/images/battery_75.png'; // 75% battery
+                    } else if (batteryPercentage >= 40) {
+                        batteryIcon.src = '/static/images/battery_50.png'; // 50% battery
+                    } else if (batteryPercentage >= 20) {
+                        batteryIcon.src = '/static/images/battery_25.png'; // 25% battery
+                    } else {
+                        batteryIcon.src = '/static/images/battery_empty.png'; // Empty battery
+                    }
+                }
+        
+                // Append the battery icon to the overlay
+                overlay.appendChild(batteryIcon);
+            })
+            .catch(error => {
+                console.error(`Error fetching battery status from camera ${ip}:`, error);
+            });
         })
         .catch(error => {
             console.error(`Error fetching settings from camera ${ip}:`, error);
 
-            // Handle errors by displaying a default name as a clickable link
+            // Display a default name and no battery status in case of error
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = 'Camera';
@@ -545,11 +634,11 @@ function fetchCameraSettings(ip, overlay) {
             label.target = '_blank';
             label.style.textDecoration = 'none';
             label.style.color = '#fff';
-            label.style.pointerEvents = 'auto'; // Enable pointer events
 
             overlay.appendChild(label);
         });
 }
+
 
 let currentScene = {};
 
@@ -600,7 +689,7 @@ function saveScene() {
 // Load a scene
 function loadScene() {
     const sceneNumber = prompt("Enter scene number to load:");
-
+    
     fetch(`/load_scene/${sceneNumber}`)
         .then(response => response.json())
         .then(scene => {
@@ -609,21 +698,114 @@ function loadScene() {
                 return;
             }
 
-            // Update lastScene on the server
-            fetch('/save_scene', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(scene)
-            }).then(() => {
-                // Re-render cameras
-                fetchAndRenderCameras();
-                // Update current scene label
-                updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+            // Clear current layout
+            document.getElementById('cameraContainer').innerHTML = '';
+
+            // Rebuild camera layout based on the scene
+            scene.cameras.forEach((camera, index) => {
+                const draggable = document.createElement('div');
+                draggable.classList.add('draggable');
+                draggable.id = `draggable_${index}`;
+
+                // Apply visibility from the scene
+                if (!camera.visible) {
+                    draggable.style.display = 'none';  // Hide the camera if it's not visible
+                } else {
+                    draggable.style.display = 'block'; // Ensure it's visible if it's marked as visible
+                }
+
+                draggable.style.left = `${camera.position.left}px`;
+                draggable.style.top = `${camera.position.top}px`;
+                draggable.style.width = `${camera.size.width}px`;
+                draggable.style.height = `${camera.size.height}px`;
+
+                const img = document.createElement('img');
+                img.id = `camera_${index}`;
+                img.src = `/camera_stream/${camera.ip}`;
+                img.classList.add('camera-stream');
+                
+                draggable.appendChild(img);
+
+                // Append to camera container
+                document.getElementById('cameraContainer').appendChild(draggable);
             });
+
+            // Now update the camera list in the toolbar
+            updateCameraList(scene.cameras);
+
+            // Update current scene label
+            updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
         });
 }
+
+
+// Function to update the camera list when loading a scene
+function updateCameraList(cameras) {
+    const cameraList = document.getElementById('cameraList');
+    cameraList.innerHTML = ''; // Clear the current list
+
+    cameras.forEach((camera, index) => {
+        const listItem = document.createElement('li');
+        listItem.classList.add('camera-item');
+        listItem.dataset.index = index;
+
+        // Create the name span with default text
+        const nameSpan = document.createElement('span');
+        nameSpan.classList.add('camera-name');
+        nameSpan.textContent = 'Loading...';
+
+        const ipSpan = document.createElement('span');
+        ipSpan.classList.add('camera-ip');
+        ipSpan.textContent = camera.ip;
+
+        // Add strikethrough and italic if the camera is hidden
+        if (!camera.visible) {
+            nameSpan.classList.add('hidden-camera');  // Add strikethrough and italic if hidden
+        }
+
+        // Create remove button
+        const removeButton = document.createElement('button');
+        removeButton.classList.add('remove-camera');
+        removeButton.textContent = 'X';
+        removeButton.dataset.ip = camera.ip;
+
+        // Align the name and IP with spacing between them
+        const nameIpContainer = document.createElement('div');
+        nameIpContainer.classList.add('name-ip-container');
+        nameIpContainer.appendChild(nameSpan);
+        nameIpContainer.appendChild(ipSpan);
+
+        listItem.appendChild(nameIpContainer);
+        listItem.appendChild(removeButton);
+        cameraList.appendChild(listItem);
+
+        // Attach event listener for remove button with confirmation
+        removeButton.addEventListener('click', function() {
+            confirmCameraRemoval(camera.ip);
+        });
+
+        // Attach event listener for toggling camera visibility
+        listItem.addEventListener('click', function() {
+            toggleCameraVisibility(index);
+        });
+
+        // Fetch the camera settings to get the name
+        fetch(`/camera_settings/${camera.ip}`)
+            .then(response => response.json())
+            .then(settings => {
+                const cameraName = settings.theatreChatName || 'Unnamed Camera';
+                nameSpan.textContent = cameraName;
+            })
+            .catch(error => {
+                console.error(`Error fetching settings for camera ${camera.ip}:`, error);
+                nameSpan.textContent = 'Unnamed Camera';
+            });
+    });
+}
+
+
+
+
 
 // Delete a scene
 function deleteScene() {
@@ -652,3 +834,200 @@ document.getElementById('loadSceneButton').addEventListener('click', loadScene);
 document.getElementById('deleteSceneButton').addEventListener('click', deleteScene);
 
 
+let lastLoadedScene = null;
+
+function pollForSceneUpdates() {
+    setInterval(() => {
+        fetch('/get_last_scene')  // Request the last scene from the server
+            .then(response => response.json())
+            .then(scene => {
+                if (!scene.error) {
+                    // Update the camera layout with the new scene data
+                    refreshSceneLayout(scene);
+                }
+            })
+            .catch(error => console.error('Error fetching last scene:', error));
+    }, 5000);  // Poll every 5 seconds
+}
+
+function refreshSceneLayout(sceneData) {
+    console.log("Refreshing scene layout with scene data:", sceneData);
+
+    // Clear the current grid
+    const cameraContainer = document.getElementById('cameraContainer');
+    cameraContainer.innerHTML = '';
+
+    // Rebuild camera layout based on the scene
+    sceneData.cameras.forEach((camera, index) => {
+        const draggable = document.createElement('div');
+        draggable.classList.add('draggable');
+        draggable.id = `draggable_${index}`;
+
+        // Apply visibility from the scene
+        draggable.style.display = camera.visible ? 'block' : 'none';
+        draggable.style.left = `${camera.position.left}px`;
+        draggable.style.top = `${camera.position.top}px`;
+        draggable.style.width = `${camera.size.width}px`;
+        draggable.style.height = `${camera.size.height}px`;
+
+        const img = document.createElement('img');
+        img.id = `camera_${index}`;
+        img.src = `/camera_stream/${camera.ip}`;
+        img.classList.add('camera-stream');
+
+        // Create overlay and label (if needed)
+        const overlay = document.createElement('div');
+        overlay.classList.add('overlay');
+
+        // Fetch camera settings for the label (optional)
+        fetchCameraSettings(camera.ip, overlay);
+
+        // Append elements
+        draggable.appendChild(img);
+        draggable.appendChild(overlay);
+
+        // **Add a resize handle for resizing functionality**
+        const resizeHandle = document.createElement('div');
+        resizeHandle.classList.add('resize-handle');
+        draggable.appendChild(resizeHandle);
+
+        cameraContainer.appendChild(draggable);
+    });
+
+    // Update the camera list in the toolbar (if applicable)
+    updateCameraList(sceneData.cameras);
+
+    // Update the current scene label
+    updateCurrentSceneLabel(sceneData.sceneNumber, sceneData.sceneName);
+
+    // **Re-attach event listeners for drag and resize**
+    setupEventDelegation();
+    setupResizeFunctionality();
+}
+
+
+
+
+// Make scene label clickable
+document.getElementById('sceneLabel').addEventListener('click', function() {
+    showSceneSelectionModal();
+});
+
+// Function to show the scene selection modal
+function showSceneSelectionModal() {
+    // Fetch scenes from the server
+    fetch('/get_scenes')
+        .then(response => response.json())
+        .then(scenes => {
+            // Sort scenes by sceneNumber
+            scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
+            
+            // Get the sceneList element
+            const sceneList = document.getElementById('sceneList');
+            sceneList.innerHTML = ''; // Clear existing content
+            
+            // Populate the scene list
+            scenes.forEach(scene => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Scene ${scene.sceneNumber}: ${scene.sceneName}`;
+                listItem.dataset.sceneNumber = scene.sceneNumber;
+                sceneList.appendChild(listItem);
+                
+                // Add click event to load the scene
+                listItem.addEventListener('click', function() {
+                    loadScene(scene.sceneNumber);
+                    closeSceneSelectionModal();
+                });
+            });
+            
+            // Show the modal
+            document.getElementById('sceneSelectionModal').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error fetching scenes:', error);
+        });
+}
+
+
+
+// Function to close the modal
+function closeSceneSelectionModal() {
+    document.getElementById('sceneSelectionModal').style.display = 'none';
+}
+
+
+
+
+function loadScene(sceneNumber) {
+    fetch(`/load_scene/${sceneNumber}`)
+        .then(response => response.json())
+        .then(scene => {
+            if (scene.error) {
+                alert(scene.error);
+                return;
+            }
+
+            // Clear current layout
+            document.getElementById('cameraContainer').innerHTML = '';
+
+            // Rebuild camera layout based on the scene
+            scene.cameras.forEach((camera, index) => {
+                renderCamera(camera, index);
+            });
+
+            // Update the camera list in the toolbar
+            updateCameraList(scene.cameras);
+
+            // Update current scene label
+            updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+
+            // Re-attach event listeners
+            setupEventDelegation();
+            setupResizeFunctionality();
+        })
+        .catch(error => {
+            console.error('Error loading scene:', error);
+        });
+}
+
+
+
+
+
+// Call pollForSceneUpdates on page load to start polling
+window.onload = function() {
+    fetchAndRenderCameras();
+    fetchAndRenderCameraList();
+    setupEventDelegation();
+    setupResizeFunctionality();
+    pollForSceneUpdates();  // Start polling for scene changes every 5 seconds
+
+    // Auto-hiding toolbar functionality
+    const toolbar = document.getElementById('toolbar');
+    const hoverArea = document.querySelector('.toolbar-hover-area');
+
+    hoverArea.addEventListener('mouseenter', () => {
+        toolbar.classList.add('visible');
+    });
+
+    toolbar.addEventListener('mouseleave', () => {
+        toolbar.classList.remove('visible');
+    });
+
+    document.getElementById('sceneLabel').addEventListener('click', function() {
+        showSceneSelectionModal();
+    });
+
+    // Close button event listener
+    document.getElementById('closeSceneModal').addEventListener('click', function() {
+        closeSceneSelectionModal();
+    });
+
+    // Close modal when clicking outside the modal content
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('sceneSelectionModal');
+        if (event.target == modal) {
+            closeSceneSelectionModal();
+        }
+    });
+};
