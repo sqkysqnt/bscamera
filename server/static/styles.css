@@ -149,7 +149,7 @@ body, html {
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none;
+    pointer-events: auto;
 }
 
 /* Camera Label */
@@ -337,11 +337,6 @@ body, html {
     background-color: rgba(172, 172, 172, 0.5); /* Semi-transparent background */
 }
 
-
-
-
-
-
 .battery-charging {
     background: url('/static/images/battery_charging.png') no-repeat center center;
 }
@@ -366,4 +361,20 @@ body, html {
     background: url('/static/images/battery_empty.png') no-repeat center center;
 }
 
+.refresh-icon {
+    position: absolute;
+    top: 5px;
+    right: 50px; /* Adjust this to position it next to the battery icon */
+    width: 35px;
+    height: 35px;
+    cursor: pointer;
+    background-color: rgba(172, 172, 172, 0.5);
+    border-radius: 50%;
+    padding: 2px;
+    z-index: 4; /* Ensures it appears above other elements */
+}
+
+.refresh-icon:hover {
+    opacity: 0.8; /* Slight hover effect */
+    transform: scale(1.1); /* Slight zoom on hover */
 }

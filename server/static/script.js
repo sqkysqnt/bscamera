@@ -95,6 +95,9 @@ function renderCamera(camera, index) {
     img.id = `camera_${index}`;
     img.src = `/camera_stream/${camera.ip}`;
     img.classList.add('camera-stream');
+    //img.setAttribute('data-index', index); //Added to help refresh button in fetchCameraSettings
+
+
 
     // Create overlay for camera label
     const overlay = document.createElement('div');
@@ -113,11 +116,11 @@ function renderCamera(camera, index) {
     label.style.color = '#fff';  // Ensure text is white
 
     // Append label to the overlay
-    overlay.appendChild(label);
+    //overlay.appendChild(label);
 
     // Append the image, overlay to the draggable div
-    draggable.appendChild(img);
-    draggable.appendChild(overlay);
+    //draggable.appendChild(img);
+    //draggable.appendChild(overlay);
 
     // Append the draggable element to the camera container
     cameraContainer.appendChild(draggable);
@@ -126,6 +129,8 @@ function renderCamera(camera, index) {
     const resizeHandle = document.createElement('div');
     resizeHandle.classList.add('resize-handle');
     draggable.appendChild(resizeHandle);
+
+    fetchCameraSettings(camera.ip, overlay, img);
 }
 
 
@@ -573,7 +578,7 @@ function stopDragOrResize(e) {
 }
 
 // Fetch camera settings for label overlay
-function fetchCameraSettings(ip, overlay) {
+function fetchCameraSettings(ip, overlay, imgElement) {
     fetch(`/camera_settings/${ip}`)
         .then(response => response.json())
         .then(settings => {
@@ -589,6 +594,32 @@ function fetchCameraSettings(ip, overlay) {
             label.style.color = '#fff';
 
             overlay.appendChild(label);
+
+            // Create and add refresh button
+            const refreshButton = document.createElement('img');
+            refreshButton.src = '/static/images/refresh.png';
+            refreshButton.classList.add('refresh-icon');
+            refreshButton.alt = 'Refresh';
+            refreshButton.style.cursor = 'pointer'; // Ensures pointer on hover
+            console.log(`Refresh button created for IP: ${ip}`);
+
+            refreshButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                console.log(`Refresh button clicked for IP: ${ip}`);
+        
+                // Refresh the image directly using `imgElement`
+                if (imgElement) {
+                    imgElement.src = `${imgElement.src.split('?')[0]}?t=${new Date().getTime()}`;
+                    console.log(`Camera stream refreshed for IP ${ip}`);
+                } else {
+                    console.error(`Image element for IP ${ip} not found`);
+                }
+            });
+
+            // Append button to overlay
+            overlay.appendChild(refreshButton);
+            console.log(`Refresh button appended to overlay for IP: ${ip}`);
+
 
             // Now fetch battery status and add the battery icon
             fetch(`/get_battery_percentage/${ip}`)
@@ -880,7 +911,7 @@ function refreshSceneLayout(sceneData) {
         overlay.classList.add('overlay');
 
         // Fetch camera settings for the label (optional)
-        fetchCameraSettings(camera.ip, overlay);
+        fetchCameraSettings(camera.ip, overlay, img);
 
         // Append elements
         draggable.appendChild(img);
