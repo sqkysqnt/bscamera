@@ -15,6 +15,11 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc import osc_server
 import socket
 import re
+import netifaces
+from queue import Queue  # Added import
+import time  # Added import
+
+camera_streams = {}  # Global dictionary to store camera streams
 
 # Set up the dispatcher to handle specific OSC addresses
 dispatcher = Dispatcher()
@@ -27,7 +32,6 @@ logging.getLogger('eventlet.wsgi').setLevel(logging.ERROR)
 CAMERAS_FILE = 'cameras.json'
 LOCK_FILE = 'cameras.lock'
 SCENES_FILE = 'scenes.json'
-BROADCAST_IP = "192.168.1.255"
 OSC_PORT = 27900
 SENDER_NAME = "CameraServer"
 DEFAULT_CHANNEL = "cameras"
@@ -35,11 +39,79 @@ DEFAULT_CHANNEL = "cameras"
 last_loaded_scene = None  # Global variable to track last loaded scene
 
 
-def get_broadcast_address():
-    # You can set this manually if automatic detection doesn't work
-    return '192.168.1.255'  # Replace with your network's broadcast IP
+class CameraStream:
+    def __init__(self, ip_address):
+        self.ip_address = ip_address
+        self.stream_url = f'http://{ip_address}:81/'  # Camera MJPEG stream endpoint
+        self.clients = []
+        self.clients_lock = threading.Lock()
+        self.thread = threading.Thread(target=self.fetch_frames)
+        self.thread.daemon = True
+        self.thread.start()
 
-BROADCAST_IP = get_broadcast_address()
+    def fetch_frames(self):
+        """Fetch frames from the camera and distribute them to clients."""
+        while True:
+            try:
+                with requests.get(self.stream_url, stream=True, timeout=10) as r:
+                    boundary = b"--frame"
+                    data = b""
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if chunk:
+                            data += chunk
+                            while True:
+                                start = data.find(boundary)
+                                if start == -1:
+                                    break
+                                end = data.find(boundary, start + len(boundary))
+                                if end == -1:
+                                    break
+                                frame = data[start:end]
+                                data = data[end:]
+                                self.distribute_frame(frame)
+            except requests.exceptions.RequestException as e:
+                print(f"Camera {self.ip_address} connection error: {e}")
+                time.sleep(1)  # Wait before retrying
+
+    def distribute_frame(self, frame):
+        """Send a frame to all connected clients."""
+        with self.clients_lock:
+            for q in self.clients[:]:
+                try:
+                    q.put(frame, timeout=0.1)
+                except:
+                    self.clients.remove(q)
+
+    def client_generator(self):
+        """Generator function to yield frames to a client."""
+        q = Queue(maxsize=10)
+        with self.clients_lock:
+            self.clients.append(q)
+        try:
+            while True:
+                frame = q.get()
+                yield frame
+        except GeneratorExit:
+            with self.clients_lock:
+                if q in self.clients:
+                    self.clients.remove(q)
+        except Exception as e:
+            print(f"Error in client_generator for camera {self.ip_address}: {e}")
+
+
+def get_broadcast_ip():
+    # Find the primary network interface
+    interfaces = netifaces.interfaces()
+    for interface in interfaces:
+        addrs = netifaces.ifaddresses(interface)
+        if netifaces.AF_INET in addrs:
+            for link in addrs[netifaces.AF_INET]:
+                if 'broadcast' in link:
+                    return link['broadcast']
+    return None
+
+BROADCAST_IP = get_broadcast_ip()
+print(f"BROADCAST_IP = {BROADCAST_IP}")
 osc_client = udp_client.SimpleUDPClient(BROADCAST_IP, OSC_PORT)
 osc_client._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
@@ -215,7 +287,7 @@ def get_cameras():
     return jsonify(cameras)
 
 
-
+'''
 @app.route('/camera_stream/<ip_address>')
 def camera_stream(ip_address):
     stream_url = f'http://{ip_address}:81/'  # Camera MJPEG stream endpoint
@@ -232,6 +304,15 @@ def camera_stream(ip_address):
             print(f"Unexpected error in proxy_stream: {e}")
     
     return Response(stream_with_context(generate()), mimetype='multipart/x-mixed-replace; boundary=frame')
+'''
+
+@app.route('/camera_stream/<ip_address>')
+def camera_stream(ip_address):
+    if ip_address not in camera_streams:
+        camera_streams[ip_address] = CameraStream(ip_address)
+    camera_stream = camera_streams[ip_address]
+    return Response(camera_stream.client_generator(), mimetype='multipart/x-mixed-replace; boundary=--frame')
+
 
 @app.route('/get_battery_percentage/<ip_address>')
 def get_battery_percentage(ip_address):
