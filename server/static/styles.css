@@ -91,19 +91,8 @@ body, html {
     left: 0;
 }
 
-/* Hover area to detect mouse movement 
 .toolbar-hover-area {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 10px; /* Adjust the width as needed 
-    height: 100%;
-    z-index: 999;
-    cursor: pointer;
-}*/
-
-.toolbar-hover-area {
-    /* background-color: rgba(255, 0, 0, 0.2); /* Red for debugging */
+    /*background-color: rgba(255, 0, 0, 0.2); /* Red for debugging */
     position: fixed;
     top: 0;
     left: 0;
@@ -377,4 +366,17 @@ body, html {
 .refresh-icon:hover {
     opacity: 0.8; /* Slight hover effect */
     transform: scale(1.1); /* Slight zoom on hover */
+}
+
+
+.record-icon, .stop-icon {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.record-icon:hover, .stop-icon:hover {
+    opacity: 0.8;
+    transform: scale(1.1); 
 }
