@@ -5,13 +5,41 @@ let offsetX, offsetY;
 let isResizing = false;
 let initialWidth, initialHeight;
 let initialMouseX, initialMouseY;
-
+let cameraRecordingStates = {};
 
 // Adjust initial positions as needed
 //const left = (index % 3) * 200; // Example value
 //const top = Math.floor(index / 3) * 150; // Example value
 
 
+
+
+// Function to fetch cameras and render them
+function fetchAndRenderCameras() {
+    return fetch('/get_last_scene')
+        .then(response => response.json())
+        .then(scene => {
+            console.log("Scene data received:", scene);
+            if (scene.error) {
+                return fetch('/get_cameras')
+                    .then(response => response.json())
+                    .then(cameras => {
+                        renderCameras(cameras);
+                        return cameras; // Return cameras data
+                    });
+            } else {
+                // Update current scene label
+                updateCurrentSceneLabel(scene.sceneNumber, scene.sceneName);
+
+                renderCameras(scene.cameras);
+                return scene.cameras; // Return cameras data
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching last scene:', error);
+        });
+}
+/*
 // Function to fetch cameras and render them
 function fetchAndRenderCameras() {
     fetch('/get_last_scene')
@@ -39,7 +67,7 @@ function fetchAndRenderCameras() {
             console.error('Error fetching last scene:', error);
         });
 }
-
+*/
 
 
 //function fetchAndRenderCameras(scene) {
@@ -53,7 +81,17 @@ function fetchAndRenderCameras() {
 //    // Update the camera list
 //    updateCameraList(scene.cameras);
 //}
+function renderCameras(cameras) {
+    const cameraContainer = document.getElementById('cameraContainer');
+    cameraContainer.innerHTML = '';  // Clear existing content
 
+    cameras.forEach((camera, index) => {
+        // Make sure the camera name is rendered
+        renderCamera(camera, index);
+    });
+
+    setupEventDelegation();  // Set up drag/resize events
+}
 
 function fetchCameras() {
     fetch('/get_cameras')
@@ -74,6 +112,26 @@ function fetchCameras() {
         });
 }
 
+/*
+function fetchCameras() {
+    fetch('/get_cameras')
+        .then(response => response.json())
+        .then(cameras => {
+            const cameraContainer = document.getElementById('cameraContainer');
+            cameraContainer.innerHTML = ''; // Clear existing content
+
+            cameras.forEach((camera, index) => {
+                renderCamera(camera, index);
+            });
+
+            // Set up event listeners for dragging and resizing
+            setupEventDelegation();
+        })
+        .catch(error => {
+            console.error('Error fetching cameras:', error);
+        });
+}
+*/
 
 function renderCamera(camera, index) {
     const cameraContainer = document.getElementById('cameraContainer');
@@ -95,6 +153,9 @@ function renderCamera(camera, index) {
     img.id = `camera_${index}`;
     img.src = `/camera_stream/${camera.ip}`;
     img.classList.add('camera-stream');
+    img.onerror = function() { // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&ADDED&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+        img.src = '/static/images/camera_unavailable.jpg';
+    };
     //img.setAttribute('data-index', index); //Added to help refresh button in fetchCameraSettings
 
 
@@ -329,6 +390,11 @@ async function fetchAndRenderCameraList() {
         const response = await fetch('/get_cameras');
         const cameras = await response.json();
 
+        // Initialize recording states    &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&ADDED&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+        cameras.forEach(camera => {
+            cameraRecordingStates[camera.ip] = camera.recording || false;
+        });
+
         const cameraList = document.getElementById('cameraList');
         cameraList.innerHTML = ''; // Clear existing content
 
@@ -348,6 +414,49 @@ async function fetchAndRenderCameraList() {
             if (!camera.visible) {
                 nameSpan.classList.add('hidden-camera');
             }
+
+            // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Start Added stuff %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            // Create a container for the name and IP
+            const nameIpContainer = document.createElement('div');
+            nameIpContainer.classList.add('name-ip-container');
+            nameIpContainer.appendChild(nameSpan);
+            nameIpContainer.appendChild(ipSpan);
+
+            // Create the record icon
+            const recordIcon = document.createElement('img');
+            recordIcon.src = '/static/images/record.png';
+            recordIcon.classList.add('record-icon');
+            recordIcon.dataset.ip = camera.ip;
+            recordIcon.title = 'Start Recording';
+
+            // Create the stop icon
+            const stopIcon = document.createElement('img');
+            stopIcon.src = '/static/images/stop.png';
+            stopIcon.classList.add('stop-icon');
+            stopIcon.dataset.ip = camera.ip;
+            stopIcon.title = 'Stop Recording';
+
+            // Determine initial visibility of icons based on recording state
+            const isRecording = cameraRecordingStates[camera.ip] || false;
+            recordIcon.style.display = isRecording ? 'none' : 'inline-block';
+            stopIcon.style.display = isRecording ? 'inline-block' : 'none';
+
+            // Add event listeners for the icons
+            recordIcon.addEventListener('click', function (event) {
+                event.stopPropagation();
+                startRecording(camera.ip, recordIcon, stopIcon);
+            });
+
+            stopIcon.addEventListener('click', function (event) {
+                event.stopPropagation();
+                stopRecording(camera.ip, recordIcon, stopIcon);
+            });
+
+            // Append elements to the list item
+            listItem.appendChild(nameIpContainer);
+            listItem.appendChild(recordIcon);
+            listItem.appendChild(stopIcon);
+            // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END Added stuff %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
             const removeButton = document.createElement('button');
             removeButton.classList.add('remove-camera');
@@ -382,6 +491,44 @@ async function fetchAndRenderCameraList() {
         console.error('Error fetching camera list:', error);
     }
 }
+
+
+//&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&ADDED FUNCTIONS&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+// Add the startRecording function
+function startRecording(ip_address, recordIcon, stopIcon) {
+    fetch(`/start_recording/${ip_address}`)
+        .then(response => response.json())
+        .then(data => {
+            //alert(data.status);
+            // Update recording state
+            cameraRecordingStates[ip_address] = true;
+            // Swap the visibility of the icons
+            recordIcon.style.display = 'none';
+            stopIcon.style.display = 'inline-block';
+        })
+        .catch(error => {
+            console.error(`Error starting recording for camera ${ip_address}:`, error);
+        });
+}
+
+// Add the stopRecording function
+function stopRecording(ip_address, recordIcon, stopIcon) {
+    fetch(`/stop_recording/${ip_address}`)
+        .then(response => response.json())
+        .then(data => {
+            //alert(data.status);
+            // Update recording state
+            cameraRecordingStates[ip_address] = false;
+            // Swap the visibility of the icons
+            recordIcon.style.display = 'inline-block';
+            stopIcon.style.display = 'none';
+        })
+        .catch(error => {
+            console.error(`Error stopping recording for camera ${ip_address}:`, error);
+        });
+}
+//&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&END ADDED FUNCTIONS&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+
 
 
 
@@ -771,9 +918,26 @@ function loadScene() {
 
 
 // Function to update the camera list when loading a scene
-function updateCameraList(cameras) {
+async function updateCameraList(cameras) {
     const cameraList = document.getElementById('cameraList');
     cameraList.innerHTML = ''; // Clear the current list
+
+    // Fetch the current cameras with recording states
+    let camerasWithRecording = [];
+    try {
+        const response = await fetch('/get_cameras');
+        camerasWithRecording = await response.json();
+    } catch (error) {
+        console.error('Error fetching cameras with recording states:', error);
+    }
+
+    // Create a mapping from IP to recording state
+    const recordingStates = {};
+    camerasWithRecording.forEach(cam => {
+        recordingStates[cam.ip] = cam.recording || false;
+        // Update cameraRecordingStates
+        cameraRecordingStates[cam.ip] = cam.recording || false;
+    });
 
     cameras.forEach((camera, index) => {
         const listItem = document.createElement('li');
@@ -789,10 +953,51 @@ function updateCameraList(cameras) {
         ipSpan.classList.add('camera-ip');
         ipSpan.textContent = camera.ip;
 
-        // Add strikethrough and italic if the camera is hidden
+        // Add strikethrough if the camera is hidden
         if (!camera.visible) {
-            nameSpan.classList.add('hidden-camera');  // Add strikethrough and italic if hidden
+            nameSpan.classList.add('hidden-camera');
         }
+
+        // Create a container for the name and IP
+        const nameIpContainer = document.createElement('div');
+        nameIpContainer.classList.add('name-ip-container');
+        nameIpContainer.appendChild(nameSpan);
+        nameIpContainer.appendChild(ipSpan);
+
+        // Create the record icon
+        const recordIcon = document.createElement('img');
+        recordIcon.src = '/static/images/record.png';
+        recordIcon.classList.add('record-icon');
+        recordIcon.dataset.ip = camera.ip;
+        recordIcon.title = 'Start Recording';
+
+        // Create the stop icon
+        const stopIcon = document.createElement('img');
+        stopIcon.src = '/static/images/stop.png';
+        stopIcon.classList.add('stop-icon');
+        stopIcon.dataset.ip = camera.ip;
+        stopIcon.title = 'Stop Recording';
+
+        // Determine initial visibility of icons based on recording state
+        const isRecording = recordingStates[camera.ip] || false;
+        recordIcon.style.display = isRecording ? 'none' : 'inline-block';
+        stopIcon.style.display = isRecording ? 'inline-block' : 'none';
+
+        // Add event listeners for the icons
+        recordIcon.addEventListener('click', function (event) {
+            event.stopPropagation();
+            startRecording(camera.ip, recordIcon, stopIcon);
+        });
+
+        stopIcon.addEventListener('click', function (event) {
+            event.stopPropagation();
+            stopRecording(camera.ip, recordIcon, stopIcon);
+        });
+
+        // Append elements to the list item
+        listItem.appendChild(nameIpContainer);
+        listItem.appendChild(recordIcon);
+        listItem.appendChild(stopIcon);
 
         // Create remove button
         const removeButton = document.createElement('button');
@@ -800,23 +1005,19 @@ function updateCameraList(cameras) {
         removeButton.textContent = 'X';
         removeButton.dataset.ip = camera.ip;
 
-        // Align the name and IP with spacing between them
-        const nameIpContainer = document.createElement('div');
-        nameIpContainer.classList.add('name-ip-container');
-        nameIpContainer.appendChild(nameSpan);
-        nameIpContainer.appendChild(ipSpan);
-
-        listItem.appendChild(nameIpContainer);
+        // Append the remove button to the list item
         listItem.appendChild(removeButton);
+
+        // Append the list item to the camera list
         cameraList.appendChild(listItem);
 
         // Attach event listener for remove button with confirmation
-        removeButton.addEventListener('click', function() {
+        removeButton.addEventListener('click', function () {
             confirmCameraRemoval(camera.ip);
         });
 
         // Attach event listener for toggling camera visibility
-        listItem.addEventListener('click', function() {
+        listItem.addEventListener('click', function () {
             toggleCameraVisibility(index);
         });
 
@@ -833,6 +1034,8 @@ function updateCameraList(cameras) {
             });
     });
 }
+
+
 
 
 
