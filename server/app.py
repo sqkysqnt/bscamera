@@ -45,38 +45,70 @@ last_loaded_scene = None  # Global variable to track last loaded scene
 class CameraStream:
     def __init__(self, ip_address):
         self.ip_address = ip_address
-        self.stream_url = f'http://{ip_address}:81/'  # Update with the correct URL
+        self.stream_url = f'http://{ip_address}:81/'
         self.clients = []
         self.clients_lock = threading.Lock()
         self.recording = False
         self.recording_lock = threading.Lock()
         self.recording_filename = None
         self.video_writer = None
-        self.capture = cv2.VideoCapture(self.stream_url)
-        if not self.capture.isOpened():
-            print(f"Failed to open video capture for camera {self.ip_address}")
-        self.thread = threading.Thread(target=self.fetch_frames)
-        self.thread.daemon = True
-        self.thread.start()
         self.placeholder_frame = self.create_placeholder_frame()
         self.current_frame = None
+        self.stop_thread = threading.Event()
+        self.capture = None
+
+        self.init_capture()
+
+    def init_capture(self):
+        """Initialize the video capture with retry logic."""
+        MAX_RETRIES = 5      # Maximum number of retry attempts
+        RETRY_DELAY = 5      # Delay between retries in seconds
+        attempt = 0
+
+        while attempt < MAX_RETRIES and not self.stop_thread.is_set():
+            print(f"Attempting to connect to camera {self.ip_address}, attempt {attempt + 1}")
+            self.capture = cv2.VideoCapture(self.stream_url)
+            self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            if self.capture.isOpened():
+                print(f"Successfully connected to camera {self.ip_address}")
+                self.thread = threading.Thread(target=self.fetch_frames)
+                self.thread.daemon = True
+                self.thread.start()
+                return  # Exit the method if connection is successful
+            else:
+                print(f"Failed to open video capture for camera {self.ip_address}, attempt {attempt + 1}")
+                attempt += 1
+                self.capture.release()
+                time.sleep(RETRY_DELAY)
+
+        if attempt >= MAX_RETRIES:
+            print(f"Failed to open video capture for camera {self.ip_address} after {MAX_RETRIES} attempts.")
+            # Schedule another attempt after some delay
+            threading.Timer(RETRY_DELAY, self.init_capture).start()
 
     def fetch_frames(self):
         """Fetch frames using OpenCV's VideoCapture."""
-        while True:
-            ret, frame = self.capture.read()
-            if not ret:
-                print(f"Failed to read frame from camera {self.ip_address}")
-                time.sleep(1)
-                continue
-            # Encode frame as JPEG
-            _, jpeg = cv2.imencode('.jpg', frame)
-            frame_data = b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
-            self.current_frame = jpeg.tobytes()
-            self.distribute_frame(frame_data)
-            # Sleep if necessary to control frame rate
-            time.sleep(0.05)  # Adjust as needed
-
+        while not self.stop_thread.is_set():
+            try:
+                ret, frame = self.capture.read()
+                if not ret or frame is None:
+                    print(f"Lost connection to camera {self.ip_address}, attempting to reconnect...")
+                    self.capture.release()
+                    self.init_capture()  # Reinitialize capture and start new thread
+                    return  # Exit the current thread
+                # Encode frame as JPEG
+                _, jpeg = cv2.imencode('.jpg', frame)
+                frame_data = b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
+                self.current_frame = jpeg.tobytes()
+                self.distribute_frame(frame_data)
+                # Sleep to control frame rate
+                time.sleep(0.05)
+            except Exception as e:
+                print(f"Exception in fetch_frames for camera {self.ip_address}: {e}")
+                self.capture.release()
+                self.init_capture()  # Reinitialize capture on exception
+                return  # Exit the current thread
 
     def distribute_frame(self, frame):
         """Send a frame to all connected clients and handle recording."""
@@ -121,7 +153,6 @@ class CameraStream:
                 self.recording = True
                 self.recording_filename = filename
                 self.video_writer = None  # Will be initialized when the first frame is recorded
-                print(f"Started recording for camera {self.ip_address} to file {filename}")
 
     def stop_recording(self):
         """Stop recording video."""
@@ -132,7 +163,6 @@ class CameraStream:
                 if self.video_writer is not None:
                     self.video_writer.release()
                     self.video_writer = None
-                print(f"Stopped recording for camera {self.ip_address}")
 
     def client_generator(self):
         """Generator function to yield frames to a client."""
@@ -420,17 +450,25 @@ from flask import jsonify
 def camera_settings(ip_address):
     try:
         response = requests.get(f'http://{ip_address}/getSettings', timeout=3)
-        if response.status_code == 200:
-            settings = response.json()
-            return jsonify(settings)
-        else:
-            print(f"Error fetching settings from camera {ip_address}: HTTP {response.status_code}")
-            return jsonify({"error": "Camera not reachable"}), 500
-    except requests.exceptions.RequestException:
-        # Suppress the detailed exception and return an error message
-        # Optionally, log the error once or at a debug level
-        # print(f"Error fetching settings from camera {ip_address}: {e}")
+        response.raise_for_status()
+        settings = response.json()
+        return jsonify(settings)
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred for {ip_address}: {http_err}")
         return jsonify({"error": "Camera not reachable"}), 500
+    except requests.exceptions.ConnectionError as conn_err:
+        print(f"Connection error occurred for {ip_address}: {conn_err}")
+        return jsonify({"error": "Camera not reachable"}), 500
+    except requests.exceptions.Timeout as timeout_err:
+        print(f"Timeout error occurred for {ip_address}: {timeout_err}")
+        return jsonify({"error": "Camera not reachable"}), 500
+    except requests.exceptions.RequestException as req_err:
+        print(f"Request exception occurred for {ip_address}: {req_err}")
+        return jsonify({"error": "Camera not reachable"}), 500
+    except ValueError as json_err:
+        print(f"JSON decode error for {ip_address}: {json_err}")
+        return jsonify({"error": "Invalid response from camera"}), 500
+
 
 
 @app.route('/update_camera', methods=['POST'])
