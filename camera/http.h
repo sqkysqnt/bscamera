@@ -50,6 +50,8 @@ extern int cameraSpecialEffect;
 extern bool cameraWhiteBalance;
 extern bool cameraAwbGain;
 extern int cameraWbMode;
+extern bool PIRDetectionToggle;
+extern bool soundDetectionToggle;
 
 extern String micOnColor;
 extern String micOffColor;
@@ -522,6 +524,35 @@ void handleSetMessageSending(AsyncWebServerRequest *request) {
 }
 
 
+// Sound Detection On/Off
+void handlesoundDetectionToggle(AsyncWebServerRequest *request) {
+    if (!request->hasParam("soundDetectionToggle", true)) {
+        request->send(400, "text/plain", "Missing 'soundDetectionToggle' argument");
+        return;
+    }
+
+    soundDetectionToggle = (request->getParam("soundDetectionToggle", true)->value() == "1");
+    logSerial("soundDetectionToggle Receive set to: " + String(soundDetectionToggle ? "ON" : "OFF"));
+
+    saveSettings();
+    request->send(200, "text/plain", "OK");
+}
+
+// Motion Detection On/Off
+void handlePIRDetectionToggle(AsyncWebServerRequest *request) {
+    if (!request->hasParam("PIRDetectionToggle", true)) {
+        request->send(400, "text/plain", "Missing 'PIRDetectionToggle' argument");
+        return;
+    }
+
+    PIRDetectionToggle = (request->getParam("PIRDetectionToggle", true)->value() == "1");
+    logSerial("PIRDetectionToggle Receive set to: " + String(PIRDetectionToggle ? "ON" : "OFF"));
+
+    saveSettings();
+    request->send(200, "text/plain", "OK");
+}
+
+
 // Camera Quality Handler
 void handleSetCameraQuality(AsyncWebServerRequest *request) {
     if (!request->hasParam("quality", true)) {
@@ -888,6 +919,8 @@ void handleGetSettings(AsyncWebServerRequest *request) {
     doc["SOUND_THRESHOLD"] = SOUND_THRESHOLD; // Add sound threshold
     doc["SOUND_DEBOUNCE_DELAY"] = SOUND_DEBOUNCE_DELAY; // Add sound debounce delay
     doc["PIR_DEBOUNCE_DELAY"] = PIR_DEBOUNCE_DELAY; // Add PIR debounce delay
+    doc["soundDetectionToggle"] = soundDetectionToggle; // Add sound debounce delay
+    doc["PIRDetectionToggle"] = PIRDetectionToggle; // Add PIR debounce delay    
     doc["frameRate"] = frameRate;
     doc["saturation"] = cameraSaturation;
     doc["specialEffect"] = cameraSpecialEffect;
