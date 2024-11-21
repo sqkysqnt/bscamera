@@ -6,6 +6,8 @@ let isResizing = false;
 let initialWidth, initialHeight;
 let initialMouseX, initialMouseY;
 let cameraRecordingStates = {};
+let cameraSettingsCache = {};
+let batteryCache = {};
 
 // Adjust initial positions as needed
 //const left = (index % 3) * 200; // Example value
@@ -724,6 +726,13 @@ function stopDragOrResize(e) {
     isResizing = false; // Stop resizing
 }
 
+
+
+
+
+
+
+
 // Fetch camera settings for label overlay
 function fetchCameraSettings(ip, overlay, imgElement) {
     fetch(`/camera_settings/${ip}`)
@@ -1081,7 +1090,7 @@ function pollForSceneUpdates() {
                 }
             })
             .catch(error => console.error('Error fetching last scene:', error));
-    }, 5000);  // Poll every 5 seconds
+    }, 5000);  // Poll every 30 seconds
 }
 
 function refreshSceneLayout(sceneData) {
