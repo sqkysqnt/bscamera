@@ -31,6 +31,8 @@ extern int cameraSpecialEffect;
 extern bool cameraWhiteBalance;
 extern bool cameraAwbGain;
 extern int cameraWbMode;
+extern bool PIRDetectionToggle;
+extern bool soundDetectionToggle;
 
 extern String micOnColor;
 extern String micOffColor;
@@ -66,6 +68,9 @@ void saveSettings() {
     preferences.putBool("whitebal", cameraWhiteBalance);
     preferences.putBool("awbGain", cameraAwbGain);
     preferences.putInt("wbMode", cameraWbMode);
+
+    preferences.putBool("PIRDetectionToggle", PIRDetectionToggle);
+    preferences.putBool("soundDetectionToggle", soundDetectionToggle);
 
     preferences.putString("micOnColor", micOnColor);
     preferences.putString("micOffColor", micOffColor);
@@ -114,6 +119,8 @@ void loadSettings() {
     ledState = preferences.getBool("ledState", true);
     ledBrightness = preferences.getInt("ledBrightness", 255);
 
+    soundDetectionToggle = preferences.getBool("soundDetectionToggle", true);    
+    PIRDetectionToggle = preferences.getBool("PIRDetectionToggle", true);
 
 
     //preferences.end();  // Close the preferences to free up memory
