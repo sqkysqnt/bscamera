@@ -17,9 +17,8 @@
 #include "driver/i2s.h"
 #include "esp_vad.h"
 #include <Adafruit_NeoPixel.h>
-
-
-
+#include "httpupdate.h"
+#include <vector>
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -38,12 +37,20 @@ XPowersPMU PMU;
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R2, U8X8_PIN_NONE);
 
 int frameRate = 30;  // Default frame rate of 30 FPS
+int currentScreen = 0;
 
 bool isStreaming = false;
+
+volatile unsigned long lastDebounceTime = 0;  // Timestamp of the last valid button press
+const unsigned long debounceDelay = 100;  // 50 milliseconds debounce delay
 
 // Incoming OSC
 bool oscReceiveEnabled = false;
 int oscPort = 8000;
+
+String firmwareUrl = "";
+String currentVersion = "1.0.0";
+
 
 // TheatreChat OSC Configuration
 bool theatreChatEnabled = true;
@@ -61,6 +68,8 @@ bool debugMode = true;    // Variable to track debug mode
 int SOUND_THRESHOLD = 6000; // Adjust based on testing
 unsigned long SOUND_DEBOUNCE_DELAY = 500; // .5 seconds debounce
 unsigned long PIR_DEBOUNCE_DELAY = 5000; // 5 seconds debounce
+bool PIRDetectionToggle = true;
+bool soundDetectionToggle = true;
 bool soundDebounceDebug = false;
 bool pirFlag = false;
 volatile bool pirTriggered = false;
@@ -121,25 +130,45 @@ const char* streamContentType = "Content-Type: image/jpeg\r\nContent-Length: ";
 const char* streamEnd = "\r\n";
 
 volatile bool pmu_flag = false;  // Declare the flag variable as volatile since it's used in an interrupt
+volatile bool userButtonFlag = false; 
 
 void setFlag() {
     pmu_flag = true;  // Set the flag to true when the interrupt is triggered
 }
+
+/*
+void userButtonISR() {
+    unsigned long currentTime = millis();
+    if ((currentTime - lastDebounceTime) > debounceDelay) {
+        userButtonFlag = true;  // Set the flag when the button is pressed
+        lastDebounceTime = currentTime;  // Update the debounce time
+    }
+}
+*/
+
+
 unsigned long loopMillis = 0;  // Initialize it globally
+
+void handlePMUButtonPress() {
+    screenPress++;  // Cycle through menu items
+    if (screenPress > 20) {  // Assuming you have 6 screens
+        screenPress = 1;  // Loop back to the first menu item
+    }
+    handleScreenSwitch();  // Update the display based on the new screen
+}
 
 // Button press handler to cycle screens
 void handleButtonPress() {
     screenPress++;
-    if (screenPress > 5) {
+    if (screenPress > 20) {
         screenPress = 1;
     }
-    handleScreenSwitch();
+    handleUserButtonPress();
 }
 
 void handleScreenSwitch() {
     switch (screenPress) {
         case 1:
-            soundDebounceDebug = false;
             //displayScreen("Main Screen", true);  // Save the screen buffer for screen 1
             displayScreen(theatreChatName);
             break;
@@ -147,21 +176,264 @@ void handleScreenSwitch() {
             displayScreen("IP: " + WiFi.localIP().toString());
             break;
         case 3:
-            displayScreen("Battery: " + String(batteryPercent) + "%");
+            if (batteryPercent = -1){
+              displayScreen("Battery Not Connected");
+            } else {
+              displayScreen("Battery: " + String(batteryPercent) + "%");
+            }
+            
             break;
         case 4:
             displayScreen("Amplitude:");
             soundDebounceDebug = true;
             break;
         case 5:
+            soundDebounceDebug = false;
+            //turn IR on or off using the other button            
+            //handleUserButtonPress();
+            if(irEnabled) {
+              displayScreen("IR On");
+            } else {
+              displayScreen("IR Off");
+            }
+            break;    
+        case 6:
+            //handleUserButtonPress();
+            if(theatreChatEnabled) {
+              displayScreen("OSC Send On");
+            } else {
+              displayScreen("OSC Send Off");
+            }
+            break;            
+        case 7:
+            //handleUserButtonPress();
+            if (oscReceiveEnabled) {
+                displayScreen("OSC Receive On");  // Update screen to show "IR On"
+            } else {
+                displayScreen("OSC Receive Off");  // Update screen to show "IR Off"
+            }
+
+            break;  
+        case 8:
+            //handleUserButtonPress();
+            if (ledState) {
+                displayScreen("LEDs On");  // Update screen to show "IR On"
+            } else {
+                displayScreen("LEDs Off");  // Update screen to show "IR Off"
+            }
+            break;  
+        case 9:
+            displayScreen("Check for update?");
+            break;  
+        case 10:
+            displayScreen("Current Firmware: " + currentVersion);
+            break;
+        case 11:
+            if (soundDetectionToggle) {
+                displayScreen("Sound Detection On");
+            } else {
+                displayScreen("Sound Detection Off");
+            }
+            break;
+        case 12:
+            if (PIRDetectionToggle) {
+                displayScreen("Motion Detection On");
+            } else {
+                displayScreen("Motion Detection Off");
+            }
+            break;
+        case 13:
+
+            break;   
+        case 14:
+
+            break;                                               
+        case 15:
+
+            break;  
+        case 16:
+
+            break;  
+        case 17:
+
+            break;     
+        case 18:
+
+            break;  
+        case 19:
+
+            break;  
+        case 20:
             u8g2.clearBuffer();
             u8g2.sendBuffer();
-            break;
+            break;                                               
         default:
             screenPress = 1;  // Loop back to screen 1
             handleScreenSwitch();  // Recall screen 1
             break;
     }
+}
+
+void handleUserButtonPress() {
+    switch (screenPress) {
+        case 1:
+            // Displays device name
+            break;
+        case 2:
+            // Displays device IP
+            break;
+        case 3:
+            // Displays device battery level
+            break;
+        case 4:
+            // Displays device amplitude max
+            break;
+        case 5:
+            // Toggle IR on/off
+            toggleIr();
+            break;
+        case 6:
+            // Toggles the device SENDING OSC messages
+            toggleOSCSend();
+            break;            
+        case 7:
+            // Toggles the device RECEIVING OSC messages
+            toggleOSCReceive();
+            break;  
+        case 8:
+            // Toggles the LEDs On/Off
+            toggleLEDs();
+            break;  
+        case 9:
+            logSerial("Checking for update");
+            firmwareUrl = checkForUpdate();
+            break;  
+        case 10:
+            // Displays current firmware version
+            break;
+        case 11:
+            togglesoundDetectionToggle();
+            break;
+        case 12:
+            togglePIRDetectionToggle();
+            break;
+        case 13:
+
+            break;   
+        case 14:
+
+            break;                                               
+        case 15:
+
+            break;  
+        case 16:
+
+            break;  
+        case 17:
+
+            break;     
+        case 18:
+
+            break;  
+        case 19:
+
+            break;  
+        case 20:
+
+            break;  
+        default:
+            break;
+    }
+}
+
+
+void toggleIr() {
+    irEnabled = !irEnabled;  // Toggle the current IR state
+
+    if (irEnabled) {
+        digitalWrite(IR_LED_PIN, HIGH);  // Turn IR on
+        logSerial("IR Enabled");
+        displayScreen("IR On");  // Update screen to show "IR On"
+    } else {
+        digitalWrite(IR_LED_PIN, LOW);  // Turn IR off
+        logSerial("IR Disabled");
+        displayScreen("IR Off");  // Update screen to show "IR Off"
+    }
+
+    saveSettings();  // Save the state (if needed)
+}
+
+void togglesoundDetectionToggle() {
+    soundDetectionToggle = !soundDetectionToggle; 
+
+    if (soundDetectionToggle) {
+        logSerial("Sound Detection On");
+        displayScreen("Sound Detection On"); 
+    } else {
+        logSerial("Sound Detection Off");
+        displayScreen("Sound Detection Off");
+    }
+
+    saveSettings();  // Save the state (if needed)
+}
+
+void togglePIRDetectionToggle() {
+    PIRDetectionToggle = !PIRDetectionToggle;  // Toggle the current IR state
+
+    if (PIRDetectionToggle) {
+        logSerial("Motion Detection On");
+        displayScreen("Motion Detection On");  // Update screen to show "IR On"
+    } else {
+        logSerial("Motion Detection Off");
+        displayScreen("Motion Detection Off");  // Update screen to show "IR Off"
+    }
+
+    saveSettings();  // Save the state (if needed)
+}
+
+void toggleOSCSend() {
+    theatreChatEnabled = !theatreChatEnabled;  // Toggle the current IR state
+
+
+    if (theatreChatEnabled) {
+        logSerial("OSC Send On");
+        displayScreen("OSC Send On");  // Update screen to show "IR On"
+    } else {
+        logSerial("OSC Send Off");
+        displayScreen("OSC Send Off");  // Update screen to show "IR Off"
+    }
+
+    saveSettings();  // Save the state (if needed)
+}
+
+void toggleOSCReceive() {
+    oscReceiveEnabled = !oscReceiveEnabled;  // Toggle the current IR state
+
+
+    if (oscReceiveEnabled) {
+        logSerial("OSC Receive On");
+        displayScreen("OSC Receive On");  // Update screen to show "IR On"
+    } else {
+        logSerial("OSC Receive Off");
+        displayScreen("OSC Receive Off");  // Update screen to show "IR Off"
+    }
+
+    saveSettings();  // Save the state (if needed)
+}
+
+void toggleLEDs() {
+    ledState = !ledState;  // Toggle the current IR state
+    //ledBrightness
+
+    if (ledState) {
+        displayScreen("LEDs On");  // Update screen to show "IR On"
+        handleLedOn("clear");
+    } else {
+        displayScreen("LEDs Off");  // Update screen to show "IR Off"
+        currentMode = LED_OFF;
+    }
+
+    saveSettings();  // Save the state (if needed)
 }
 /*
 // streamTask does this now
@@ -201,13 +473,13 @@ void streamTask(void *pvParameters) {
     WiFiClient client;
 
     while (1) {
-        // Check if a new client has connected on port 81 (for the stream)
         client = streamServer.available();  // Listen for incoming clients
         if (client) {
             logSerial("Client connected, starting stream...");
-            // Send the multipart HTTP header
+            // Send the multipart HTTP header with the correct boundary
             client.println("HTTP/1.1 200 OK");
             client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
+            client.println("Connection: keep-alive");  // Prevents premature client disconnection
             client.println();
 
             while (client.connected()) {
@@ -219,9 +491,9 @@ void streamTask(void *pvParameters) {
                 }
 
                 // Send the image frame as part of the multipart stream
-                client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", fb->len);
+                client.printf("--%s\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", "frame", fb->len);
                 client.write(fb->buf, fb->len);
-                client.println("\r\n");
+                client.println();  // Send an empty line after the frame
 
                 esp_camera_fb_return(fb);
 
@@ -229,8 +501,7 @@ void streamTask(void *pvParameters) {
                 int frameDelayMs = 1000 / frameRate;
 
                 // Optionally add a delay to control frame rate without blocking main loop
-                vTaskDelay(pdMS_TO_TICKS(frameDelayMs));  // Run at ~30 FPS
-                //logSerial("Frame rate: " + String(frameRate) + " Frame Delay: " + String(frameDelayMs));
+                vTaskDelay(pdMS_TO_TICKS(frameDelayMs));  // Run at desired FPS
             }
 
             logSerial("Client disconnected, ending stream.");
@@ -240,6 +511,8 @@ void streamTask(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(10));  // Small delay to prevent CPU hogging
     }
 }
+
+
 
 // Function to log messages
 void logSerial(String message) {
@@ -337,7 +610,10 @@ void pirTask(void *pvParameters) {
         if (xSemaphoreTake(pirSemaphore, portMAX_DELAY) == pdTRUE) {
             logSerial("PIR event detected.");
             // Handle PIR event
-            sendTheatreChatOscMessage("PIR triggered.");
+            if (PIRDetectionToggle){
+              sendTheatreChatOscMessage("PIR triggered.");
+            }
+
         }
         vTaskDelay(pdMS_TO_TICKS(500));  // Add delay to avoid CPU hogging
     }
@@ -544,7 +820,10 @@ void soundDetectionTask(void *pvParameters) {
                 // Handle microphone event
                 micFlag = true;
                 micTimestamp = millis();
-                sendTheatreChatOscMessage("Microphone triggered.");
+                if (soundDetectionToggle){
+                  sendTheatreChatOscMessage("Microphone triggered.");
+                }
+
             }
         }
         vTaskDelay(pdMS_TO_TICKS(500));  // Add delay to avoid CPU hogging
@@ -696,7 +975,8 @@ void setup() {
     * */
     //PMU.setChargingLedMode(XPOWERS_CHG_LED_BLINK_1HZ);
 
-    pinMode(USER_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(USER_BUTTON_PIN, INPUT_PULLUP);  // Set button pin as input with internal pull-up resistor
+    attachInterrupt(USER_BUTTON_PIN, userButtonISR, FALLING);  // Attach interrupt on falling edge
 
     // Initialize the display
     u8g2.begin();
@@ -1032,6 +1312,14 @@ if (!fb) {
     server.on("/setLedBrightness", HTTP_POST, [](AsyncWebServerRequest *request){
         handleSetLedBrightness(request);
     });
+    server.on("/soundDetectionToggle", HTTP_POST, [](AsyncWebServerRequest *request){
+        handlesoundDetectionToggle(request);
+    });
+
+    server.on("/PIRDetectionToggle", HTTP_POST, [](AsyncWebServerRequest *request){
+        handlePIRDetectionToggle(request);
+    });
+
 
     
 
@@ -1250,8 +1538,8 @@ void loop() {
             Serial.println("isBatRemove");
         }
         if (PMU.isPekeyShortPressIrq()) {
-            Serial.println("isPekeyShortPress");
-            handleButtonPress();
+            logSerial("LEFT BUTTON!!!!!");
+            handlePMUButtonPress();
         }
         if (PMU.isPekeyLongPressIrq()) {
             Serial.println("isPekeyLongPress");
@@ -1278,6 +1566,31 @@ void loop() {
     }
     //Serial.println("loop");
 
+/*
+    if (userButtonFlag) {
+        userButtonFlag = false;  // Reset the flag
+
+        // Perform the action for the button press
+        logSerial("RIGHT BUTTON!!!!!");
+        handleUserButtonPress();
+        //handleButtonPress();  // Call your button press handler function (if applicable)
+    }
+
+    if (updatePrompt && countingForUpdate) {
+        handleUpdateButton();
+    }
+*/
+
+
+      if (userButtonFlag) {
+    userButtonFlag = false;  // Reset the flag
+    handleRegularButtonPress();
+  }
+
+  // Handle OTA update button hold
+  if (updatePrompt && countingForUpdate) {
+    handleUpdateButton();
+  }
 
     if (WiFi.status() != WL_CONNECTED) {
         logSerial("WiFi disconnected!");
