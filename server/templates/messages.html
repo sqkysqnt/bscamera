@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/styles-messages.css">
+    <title>BS Cam Messages</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="toolbar">
+            <h2>Theatre Chat</h2>
+        </div>
+        <div class="main-chat">
+            <div class="chat-window" id="chat-window">
+                {% for timestamp, sender_name, message, channel, me in messages %}
+                <div class="chat-message {% if me %}chat-me{% else %}chat-other{% endif %}">
+                    <span class="chat-timestamp">[{{ timestamp }}]</span>
+                    {% if me %}
+                        <span class="chat-sender">Me:</span>
+                    {% else %}
+                        <span class="chat-sender">{{ sender_name }}:</span>
+                    {% endif %}
+                    <span class="chat-text">{{ message }}</span>
+                </div>
+            {% endfor %}
+            
+            </div>
+            
+            
+            <div class="chat-input-container">
+                <input type="text" class="chat-input" id="message-input" placeholder="Type a message... (Press Enter to send)">
+                <button class="chat-send" id="send-button">Send</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const socket = io();
+    
+        // Listen for new messages
+        socket.on('new_message', (data) => {
+            const chatWindow = document.getElementById('chat-window');
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('chat-message');
+            messageElement.classList.add(data.me ? 'chat-me' : 'chat-other');
+    
+            messageElement.innerHTML = `
+                <span class="chat-timestamp">[${data.timestamp}]</span>
+                <span class="chat-sender">${data.me ? 'Me:' : data.sender_name + ':'}</span>
+                <span class="chat-text">${data.message}</span>
+            `;
+    
+            chatWindow.appendChild(messageElement);
+            chatWindow.scrollTop = chatWindow.scrollHeight; // Auto-scroll to latest message
+        });
+    
+        // Function to send message
+        function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            const message = messageInput.value.trim();
+    
+            if (message !== '') {
+                socket.emit('send_message', { message: message });
+                messageInput.value = '';
+            }
+        }
+    
+        // Send message when "Send" button is clicked
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+    
+        // Send message when "Enter" key is pressed
+        document.getElementById('message-input').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Prevent new line in input
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
