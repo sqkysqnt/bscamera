@@ -13,7 +13,7 @@ let batteryCache = {};
 //const left = (index % 3) * 200; // Example value
 //const top = Math.floor(index / 3) * 150; // Example value
 
-
+const socket = io();
 
 
 // Function to fetch cameras and render them
@@ -153,8 +153,11 @@ function renderCamera(camera, index) {
     // Create the image element for MJPEG stream
     const img = document.createElement('img');
     img.id = `camera_${index}`;
-    img.src = `/camera_stream/${camera.ip}`;
+    // img.src = '/static/images/placeholder.jpg';  // Or leave it empty
+    img.src = '/static/images/camera_unavailable.jpg';
+    // img.src = `/camera_stream/${camera.ip}`;
     img.classList.add('camera-stream');
+    img.setAttribute('data-ip', camera.ip);  // Set the IP address
     img.onerror = function() { // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&ADDED&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         img.src = '/static/images/camera_unavailable.jpg';
     };
@@ -182,8 +185,8 @@ function renderCamera(camera, index) {
     //overlay.appendChild(label);
 
     // Append the image, overlay to the draggable div
-    //draggable.appendChild(img);
-    //draggable.appendChild(overlay);
+    draggable.appendChild(img);
+    draggable.appendChild(overlay);
 
     // Append the draggable element to the camera container
     cameraContainer.appendChild(draggable);
@@ -738,20 +741,21 @@ function fetchCameraSettings(ip, overlay, imgElement) {
     fetch(`/camera_settings/${ip}`)
         .then(response => response.json())
         .then(settings => {
+            // Use theatreChatName from settings or fallback to 'Unnamed Camera'
             const theatreChatName = settings.theatreChatName || 'Unnamed Camera';
 
-            // Create a clickable label for the camera name
+            // Create or update the label for the camera
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = theatreChatName;
-            label.href = `http://${ip}/`;  // Set the link to the camera's IP address
-            label.target = '_blank';  // Open in a new tab
+            label.href = `http://${ip}/`;
+            label.target = '_blank';
             label.style.textDecoration = 'none';
             label.style.color = '#fff';
 
             overlay.appendChild(label);
 
-            // Create and add refresh button
+            // Create and add a refresh button
             const refreshButton = document.createElement('img');
             refreshButton.src = '/static/images/refresh.png';
             refreshButton.classList.add('refresh-icon');
@@ -772,48 +776,49 @@ function fetchCameraSettings(ip, overlay, imgElement) {
                 }
             });
 
-            // Append button to overlay
+            // Append refresh button to overlay
             overlay.appendChild(refreshButton);
             console.log(`Refresh button appended to overlay for IP: ${ip}`);
 
-
-            // Now fetch battery status and add the battery icon
+            // Fetch battery status and add battery icon
             fetch(`/get_battery_percentage/${ip}`)
-            .then(response => response.text())
-            .then(batteryStatus => {
-                console.log(`Battery status for ${ip}: ${batteryStatus}`);
-                const batteryIcon = document.createElement('img'); // Change from <div> to <img>
-                batteryIcon.classList.add('battery-icon');
-        
-                // Set the appropriate image based on battery percentage
-                if (batteryStatus === 'N/A') {
-                    batteryIcon.src = '/static/images/battery_charging.png'; // Charging icon
-                } else {
-                    const batteryPercentage = parseInt(batteryStatus, 10);
-                    if (batteryPercentage >= 90) {
-                        batteryIcon.src = '/static/images/battery_100.png'; // 100% battery
-                    } else if (batteryPercentage >= 65) {
-                        batteryIcon.src = '/static/images/battery_75.png'; // 75% battery
-                    } else if (batteryPercentage >= 40) {
-                        batteryIcon.src = '/static/images/battery_50.png'; // 50% battery
-                    } else if (batteryPercentage >= 20) {
-                        batteryIcon.src = '/static/images/battery_25.png'; // 25% battery
+                .then(response => response.text())
+                .then(batteryStatus => {
+                    console.log(`Battery status for ${ip}: ${batteryStatus}`);
+                    
+                    // Create the battery icon
+                    const batteryIcon = document.createElement('img');
+                    batteryIcon.classList.add('battery-icon');
+
+                    // Determine the appropriate battery icon based on status
+                    if (batteryStatus === 'N/A') {
+                        batteryIcon.src = '/static/images/battery_charging.png'; // Charging icon
                     } else {
-                        batteryIcon.src = '/static/images/battery_empty.png'; // Empty battery
+                        const batteryPercentage = parseInt(batteryStatus, 10);
+                        if (batteryPercentage >= 90) {
+                            batteryIcon.src = '/static/images/battery_100.png';
+                        } else if (batteryPercentage >= 65) {
+                            batteryIcon.src = '/static/images/battery_75.png';
+                        } else if (batteryPercentage >= 40) {
+                            batteryIcon.src = '/static/images/battery_50.png';
+                        } else if (batteryPercentage >= 20) {
+                            batteryIcon.src = '/static/images/battery_25.png';
+                        } else {
+                            batteryIcon.src = '/static/images/battery_empty.png';
+                        }
                     }
-                }
-        
-                // Append the battery icon to the overlay
-                overlay.appendChild(batteryIcon);
-            })
-            .catch(error => {
-                console.error(`Error fetching battery status from camera ${ip}:`, error);
-            });
+
+                    // Append battery icon to overlay
+                    overlay.appendChild(batteryIcon);
+                })
+                .catch(error => {
+                    console.error(`Error fetching battery status from camera ${ip}:`, error);
+                });
         })
         .catch(error => {
             console.error(`Error fetching settings from camera ${ip}:`, error);
 
-            // Display a default name and no battery status in case of error
+            // Fallback behavior for label and overlay in case of error
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = 'Camera';
@@ -825,6 +830,7 @@ function fetchCameraSettings(ip, overlay, imgElement) {
             overlay.appendChild(label);
         });
 }
+
 
 
 let currentScene = {};
@@ -1079,19 +1085,6 @@ document.getElementById('deleteSceneButton').addEventListener('click', deleteSce
 
 let lastLoadedScene = null;
 
-function pollForSceneUpdates() {
-    setInterval(() => {
-        fetch('/get_last_scene')  // Request the last scene from the server
-            .then(response => response.json())
-            .then(scene => {
-                if (!scene.error) {
-                    // Update the camera layout with the new scene data
-                    refreshSceneLayout(scene);
-                }
-            })
-            .catch(error => console.error('Error fetching last scene:', error));
-    }, 5000);  // Poll every 30 seconds
-}
 
 function refreshSceneLayout(sceneData) {
     console.log("Refreshing scene layout with scene data:", sceneData);
@@ -1234,7 +1227,97 @@ function loadScene(sceneNumber) {
 }
 
 
+socket.on('battery_status', function(data) {
+    const ip = data.ip;
+    const batteryPercentage = data.battery_percentage;
 
+    // Update the battery icon for the corresponding camera
+    updateBatteryStatus(ip, batteryPercentage);
+});
+
+function updateBatteryStatus(ip, batteryPercentage) {
+    // Find the overlay element for the camera with the given IP
+    const overlays = document.querySelectorAll('.overlay');
+    overlays.forEach(overlay => {
+        const label = overlay.querySelector('.camera-label');
+        if (label && label.href.includes(ip)) {
+            // Find the battery icon within this overlay
+            let batteryIcon = overlay.querySelector('.battery-icon');
+            if (!batteryIcon) {
+                // Create the battery icon if it doesn't exist
+                batteryIcon = document.createElement('img');
+                batteryIcon.classList.add('battery-icon');
+                overlay.appendChild(batteryIcon);
+            }
+
+            // Update the battery icon based on the battery percentage
+            if (batteryPercentage === 'N/A') {
+                batteryIcon.src = '/static/images/battery_charging.png';
+            } else {
+                const percentage = parseInt(batteryPercentage, 10);
+                if (percentage >= 90) {
+                    batteryIcon.src = '/static/images/battery_100.png';
+                } else if (percentage >= 65) {
+                    batteryIcon.src = '/static/images/battery_75.png';
+                } else if (percentage >= 40) {
+                    batteryIcon.src = '/static/images/battery_50.png';
+                } else if (percentage >= 20) {
+                    batteryIcon.src = '/static/images/battery_25.png';
+                } else {
+                    batteryIcon.src = '/static/images/battery_empty.png';
+                }
+            }
+        }
+    });
+}
+
+socket.on('camera_settings', function(data) {
+    const ip = data.ip;
+    const settings = data.settings;
+
+    // Update the camera label or other settings
+    updateCameraSettings(ip, settings);
+});
+
+function updateCameraSettings(ip, settings) {
+    const overlays = document.querySelectorAll('.overlay');
+    overlays.forEach(overlay => {
+        const label = overlay.querySelector('.camera-label');
+        if (label && label.href.includes(ip)) {
+            // Update the label text
+            label.textContent = settings.theatreChatName || 'Unnamed Camera';
+        }
+    });
+}
+
+socket.on('scene_loaded', function(scene) {
+    // Update the UI with the new scene data
+    refreshSceneLayout(scene);
+});
+
+socket.on('frame', function(data) {
+    const ip = data.ip;
+    const frameData = data.frame;  // Base64 encoded frame
+
+    // Update the image element corresponding to this IP
+    updateCameraFrame(ip, frameData);
+});
+
+let lastFrameTime = {}; // Store the last update time for each camera
+
+// Function to update the camera frame
+function updateCameraFrame(ip, frameData) {
+    const now = Date.now();
+    if (!lastFrameTime[ip] || now - lastFrameTime[ip] >= 100) { // Update every 100ms
+        lastFrameTime[ip] = now;
+        const imgElements = document.querySelectorAll(`img.camera-stream[data-ip='${ip}']`);
+        imgElements.forEach(img => {
+            if (!img.classList.contains('record-icon') && !img.classList.contains('stop-icon')) {
+                img.src = `data:image/jpeg;base64,${frameData}`;
+            }
+        });
+    }
+}
 
 
 // Call pollForSceneUpdates on page load to start polling
@@ -1243,7 +1326,7 @@ window.onload = function() {
     fetchAndRenderCameraList();
     setupEventDelegation();
     setupResizeFunctionality();
-    pollForSceneUpdates();  // Start polling for scene changes every 5 seconds
+    //pollForSceneUpdates();  // Start polling for scene changes every 5 seconds
 
     // Auto-hiding toolbar functionality
     const toolbar = document.getElementById('toolbar');
@@ -1274,3 +1357,19 @@ window.onload = function() {
         }
     });
 };
+
+socket.on('connect', () => {
+    console.log('Socket.IO client connected');
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Socket.IO connection error:', error);
+});
+
+socket.on('error', (error) => {
+    console.error('Socket.IO error:', error);
+});
+
+socket.on('disconnect', () => {
+    console.warn('Socket.IO client disconnected');
+});
