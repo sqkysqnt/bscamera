@@ -276,6 +276,12 @@ const char index_html[] PROGMEM = R"rawliteral(
 
         <!-- Sound Settings Section -->
         <div class="section-title">Detection Settings</div>
+        <div class="form-group">
+            <label><input type="checkbox" id="soundDetectionToggle"> Enable/Disable Sound Detection</label>
+        </div>
+        <div class="form-group">
+            <label><input type="checkbox" id="PIRDetectionToggle"> Enable/Disable PIR Detection</label>
+        </div>
 
         <!-- Sound Threshold Input -->
         <div class="form-group">
@@ -363,6 +369,24 @@ const char index_html[] PROGMEM = R"rawliteral(
         xhr.open('POST', '/setDebugMode', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         xhr.send('mode=' + debugMode);
+    });
+
+    // JavaScript for soundDetectionToggle Toggle
+    document.getElementById('soundDetectionToggle').addEventListener('change', function () {
+        const soundDetectionToggle = this.checked ? '1' : '0';
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/soundDetectionToggle', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('soundDetectionToggle=' + soundDetectionToggle);
+    });
+
+    // JavaScript for PIRDetectionToggle Toggle
+    document.getElementById('PIRDetectionToggle').addEventListener('change', function () {
+        const PIRDetectionToggle = this.checked ? '1' : '0';
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/PIRDetectionToggle', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.send('PIRDetectionToggle=' + PIRDetectionToggle);
     });
 
     // JavaScript for IR Toggle
@@ -795,6 +819,8 @@ const char index_html[] PROGMEM = R"rawliteral(
                 document.getElementById('soundThreshold').value = settings.SOUND_THRESHOLD;
                 document.getElementById('soundDebounce').value = settings.SOUND_DEBOUNCE_DELAY;
                 document.getElementById('pirDebounce').value = settings.PIR_DEBOUNCE_DELAY;
+                document.getElementById('soundDetectionToggle').checked = settings.soundDetectionToggle;
+                document.getElementById('PIRDetectionToggle').checked = settings.PIRDetectionToggle;
 
                 // Grey out the theatre chat name field
                 const chatNameField = document.getElementById('chatName');
