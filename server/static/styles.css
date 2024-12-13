@@ -80,7 +80,7 @@ body, html {
     width: 300px; /* Increased width */
     height: 100%;
     background-color: #1e1e1e;
-    transition: left 0.3s ease;
+    transition: left 0.6s ease;
     z-index: 1000;
     padding: 20px 10px;
     box-sizing: border-box;
@@ -214,13 +214,10 @@ body, html {
 
 /* Styles for buttons at the bottom of the toolbar */
 .toolbar-buttons {
-    position: absolute;
-    bottom: 20px;
-    left: 10px;
-    right: 10px;
     display: flex;
     flex-direction: column;
     gap: 10px; /* Space between buttons */
+    margin-bottom: 20px; /* Space below for camera list */
 }
 
 .toolbar-buttons button {
@@ -237,6 +234,64 @@ body, html {
 .toolbar-buttons button:hover {
     background-color: #3c3c3c;
 }
+
+/* Messages button container at the bottom of the toolbar */
+.messages-button-container {
+    position: absolute;
+    bottom: 100px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+.messages-button {
+    display: inline-block;
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+.messages-button:hover {
+    background-color: #3c3c3c;
+}
+
+/* x32 button container at the bottom of the toolbar */
+.x32-button-container {
+    position: absolute;
+    bottom: 145px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+.x32-button {
+    display: inline-block;
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+.x32-button:hover {
+    background-color: #3c3c3c;
+}
+
+
 
 .hidden-camera {
     text-decoration: line-through;
@@ -370,8 +425,8 @@ body, html {
 
 
 .record-icon, .stop-icon {
-    width: 20px;
-    height: 20px;
+    width: 12px;
+    height: 12px;
     cursor: pointer;
     margin-left: 10px;
 }
@@ -379,4 +434,24 @@ body, html {
 .record-icon:hover, .stop-icon:hover {
     opacity: 0.8;
     transform: scale(1.1); 
+}
+
+.lock-button-container {
+    position: absolute;
+    bottom: 60px; /* Place it just above where the messages button is or adjust as needed */
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.lock-button-container img {
+    filter: brightness(0.8);
+    transition: filter 0.3s ease;
+}
+
+.lock-button-container img:hover {
+    filter: brightness(1.0);
+    transform: scale(1.05);
 }
