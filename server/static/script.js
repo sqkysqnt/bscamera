@@ -8,6 +8,7 @@ let initialMouseX, initialMouseY;
 let cameraRecordingStates = {};
 let cameraSettingsCache = {};
 let batteryCache = {};
+let toolbarLocked = false;
 
 // Adjust initial positions as needed
 //const left = (index % 3) * 200; // Example value
@@ -136,6 +137,11 @@ function fetchCameras() {
 */
 
 function renderCamera(camera, index) {
+    // Add the following IP validation check at the beginning
+    if (!camera.ip || typeof camera.ip !== 'string' || camera.ip.trim() === '') {
+        console.error("Camera at index " + index + " has no valid IP. Skipping render.");
+        return; // Do not render this camera if IP is invalid
+    }
     const cameraContainer = document.getElementById('cameraContainer');
 
     const draggable = document.createElement('div');
@@ -154,10 +160,11 @@ function renderCamera(camera, index) {
     const img = document.createElement('img');
     img.id = `camera_${index}`;
     // img.src = '/static/images/placeholder.jpg';  // Or leave it empty
-    img.src = '/static/images/camera_unavailable.jpg';
-    // img.src = `/camera_stream/${camera.ip}`;
+    //img.src = '/static/images/camera_unavailable.jpg';
+    img.src = `/camera_stream/${camera.ip}`;
     img.classList.add('camera-stream');
     img.setAttribute('data-ip', camera.ip);  // Set the IP address
+    //console.log("Rendering camera with IP:", camera.ip);
     img.onerror = function() { // &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&ADDED&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
         img.src = '/static/images/camera_unavailable.jpg';
     };
@@ -263,25 +270,35 @@ function dragStart(e, draggable) {
 
 function dragEnd(e) {
     if (activeDraggable) {
-        console.log('Drag end');
-        activeDraggable.style.cursor = 'move';
-        activeDraggable.style.zIndex = ''; // Reset z-index after dragging
-
-        // Save the updated position
-        const ip = activeDraggable.querySelector('img').src.split('/camera_stream/')[1];
+        const img = activeDraggable.querySelector('img');
+        const ip = img.getAttribute('data-ip');
+        if (!ip) {
+            console.error("No IP found for dragged camera. Cannot update position.");
+            activeDraggable.style.cursor = 'move';
+            activeDraggable.style.zIndex = '';
+            activeDraggable = null;
+            return;
+        }
         const position = {
-            left: parseInt(activeDraggable.style.left, 10),
-            top: parseInt(activeDraggable.style.top, 10)
+            left: parseInt(activeDraggable.style.left, 10) || 0,
+            top: parseInt(activeDraggable.style.top, 10) || 0
         };
-
         const size = {
-            width: activeDraggable.offsetWidth,
-            height: activeDraggable.offsetHeight
+            width: activeDraggable.offsetWidth || 320,
+            height: activeDraggable.offsetHeight || 240
         };
 
-        // Send updated position and size to the server
-        updateCamera(ip, position, size);
+        console.log("Updating camera with IP:", ip, position, size);
 
+        if (ip && !isNaN(position.left) && !isNaN(position.top) && 
+            !isNaN(size.width) && !isNaN(size.height)) {
+            updateCamera(ip, position, size);
+        } else {
+            console.error("Invalid IP, position, or size data. Not updating camera.");
+        }
+
+        activeDraggable.style.cursor = 'move';
+        activeDraggable.style.zIndex = '';
         activeDraggable = null;
     }
 }
@@ -468,9 +485,9 @@ async function fetchAndRenderCameraList() {
             removeButton.textContent = 'X';
             removeButton.dataset.ip = camera.ip;
 
-            listItem.appendChild(nameSpan);
-            listItem.appendChild(document.createElement('br'));
-            listItem.appendChild(ipSpan);
+            //listItem.appendChild(nameSpan);
+            //listItem.appendChild(document.createElement('br'));
+            //listItem.appendChild(ipSpan);
             listItem.appendChild(removeButton);
             cameraList.appendChild(listItem);
 
@@ -738,10 +755,16 @@ function stopDragOrResize(e) {
 
 // Fetch camera settings for label overlay
 function fetchCameraSettings(ip, overlay, imgElement) {
+    // Check if a label already exists to prevent duplicate overlays
+    const existingLabel = overlay.querySelector('.camera-label');
+    if (existingLabel) {
+        console.log(`Overlay for IP: ${ip} already has camera settings. Skipping duplicates.`);
+        return; // If we already have camera settings, do not recreate them
+    }
+
     fetch(`/camera_settings/${ip}`)
         .then(response => response.json())
         .then(settings => {
-            // Use theatreChatName from settings or fallback to 'Unnamed Camera'
             const theatreChatName = settings.theatreChatName || 'Unnamed Camera';
 
             // Create or update the label for the camera
@@ -752,7 +775,6 @@ function fetchCameraSettings(ip, overlay, imgElement) {
             label.target = '_blank';
             label.style.textDecoration = 'none';
             label.style.color = '#fff';
-
             overlay.appendChild(label);
 
             // Create and add a refresh button
@@ -760,23 +782,29 @@ function fetchCameraSettings(ip, overlay, imgElement) {
             refreshButton.src = '/static/images/refresh.png';
             refreshButton.classList.add('refresh-icon');
             refreshButton.alt = 'Refresh';
-            refreshButton.style.cursor = 'pointer'; // Ensures pointer on hover
+            refreshButton.style.cursor = 'pointer';
             console.log(`Refresh button created for IP: ${ip}`);
 
             refreshButton.addEventListener('click', (event) => {
                 event.stopPropagation();
                 console.log(`Refresh button clicked for IP: ${ip}`);
-        
-                // Refresh the image directly using `imgElement`
+            
                 if (imgElement) {
-                    imgElement.src = `${imgElement.src.split('?')[0]}?t=${new Date().getTime()}`;
+                    const src = imgElement.src.split('?')[0];
+                    // Only add ?t= if the URL starts with http or https
+                    if (src.startsWith('http') || src.startsWith('/camera_stream')) {
+                        imgElement.src = `${src}?t=${new Date().getTime()}`;
+                    } else {
+                        // If it's a data URI, just reassigning the same src would "refresh"
+                        imgElement.src = src; 
+                    }
                     console.log(`Camera stream refreshed for IP ${ip}`);
                 } else {
                     console.error(`Image element for IP ${ip} not found`);
                 }
             });
+            
 
-            // Append refresh button to overlay
             overlay.appendChild(refreshButton);
             console.log(`Refresh button appended to overlay for IP: ${ip}`);
 
@@ -792,7 +820,7 @@ function fetchCameraSettings(ip, overlay, imgElement) {
 
                     // Determine the appropriate battery icon based on status
                     if (batteryStatus === 'N/A') {
-                        batteryIcon.src = '/static/images/battery_charging.png'; // Charging icon
+                        batteryIcon.src = '/static/images/battery_charging.png';
                     } else {
                         const batteryPercentage = parseInt(batteryStatus, 10);
                         if (batteryPercentage >= 90) {
@@ -808,7 +836,6 @@ function fetchCameraSettings(ip, overlay, imgElement) {
                         }
                     }
 
-                    // Append battery icon to overlay
                     overlay.appendChild(batteryIcon);
                 })
                 .catch(error => {
@@ -818,7 +845,7 @@ function fetchCameraSettings(ip, overlay, imgElement) {
         .catch(error => {
             console.error(`Error fetching settings from camera ${ip}:`, error);
 
-            // Fallback behavior for label and overlay in case of error
+            // Fallback if settings fetch fails and we didn't have an overlay yet
             const label = document.createElement('a');
             label.classList.add('camera-label');
             label.textContent = 'Camera';
@@ -830,6 +857,7 @@ function fetchCameraSettings(ip, overlay, imgElement) {
             overlay.appendChild(label);
         });
 }
+
 
 
 
@@ -849,19 +877,20 @@ function saveScene() {
     const cameras = document.querySelectorAll('.draggable');
     cameras.forEach(camera => {
         const img = camera.querySelector('img');
-        const ip = img.src.split('/camera_stream/')[1];
+        const ip = img.getAttribute('data-ip'); // Use data-ip attribute for IP
 
         sceneData.cameras.push({
-            ip: ip,
+            ip: ip || "0.0.0.0",  // Fallback IP
+            name: camera.querySelector('.camera-label')?.textContent || "Unnamed Camera", // Fetch camera name
             position: {
-                left: parseInt(camera.style.left),
-                top: parseInt(camera.style.top)
+                left: parseInt(camera.style.left) || 0,
+                top: parseInt(camera.style.top) || 0
             },
             size: {
-                width: camera.offsetWidth,
-                height: camera.offsetHeight
+                width: camera.offsetWidth || 320,
+                height: camera.offsetHeight || 240
             },
-            visible: !camera.classList.contains('hidden')
+            visible: camera.style.display !== 'none'
         });
     });
 
@@ -878,6 +907,7 @@ function saveScene() {
           }
       });
 }
+
 
 // Load a scene
 function loadScene() {
@@ -1111,6 +1141,8 @@ function refreshSceneLayout(sceneData) {
         img.src = `/camera_stream/${camera.ip}`;
         img.classList.add('camera-stream');
 
+        img.setAttribute('data-ip', camera.ip);
+
         // Create overlay and label (if needed)
         const overlay = document.createElement('div');
         overlay.classList.add('overlay');
@@ -1331,14 +1363,37 @@ window.onload = function() {
     // Auto-hiding toolbar functionality
     const toolbar = document.getElementById('toolbar');
     const hoverArea = document.querySelector('.toolbar-hover-area');
+    const lockIcon = document.getElementById('lockIcon');
+    const unlockIcon = document.getElementById('unlockIcon');
+    
 
     hoverArea.addEventListener('mouseenter', () => {
         toolbar.classList.add('visible');
     });
 
     toolbar.addEventListener('mouseleave', () => {
-        toolbar.classList.remove('visible');
+        if (!toolbarLocked) {
+            toolbar.classList.remove('visible');
+        }
     });
+
+    lockIcon.addEventListener('click', () => {
+        // Lock the toolbar
+        toolbarLocked = true;
+        toolbar.classList.add('visible'); // Ensure it's visible
+        lockIcon.style.display = 'none';
+        unlockIcon.style.display = 'inline-block';
+    });
+    
+    unlockIcon.addEventListener('click', () => {
+        // Unlock the toolbar
+        toolbarLocked = false;
+        unlockIcon.style.display = 'none';
+        lockIcon.style.display = 'inline-block';
+        // If the mouse is not currently hovering over the toolbar or hover area, hide it
+        // (Optional check could be added here if desired)
+    });
+
 
     document.getElementById('sceneLabel').addEventListener('click', function() {
         showSceneSelectionModal();
