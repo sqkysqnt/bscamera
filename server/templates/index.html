@@ -17,21 +17,39 @@
                 <input type="text" id="ipAddress" name="ip_address" placeholder="Enter Camera IP" required>
                 <button type="submit">Add Camera</button>
             </form>
-            <br>
-            <div id="cameraListTitle">Active Cameras</div>
-            <ul id="cameraList">
-                <!-- Camera list items will be dynamically inserted here -->
-            </ul>
+
+            <!-- Moved scene buttons here, directly under Add Camera -->
             <div class="toolbar-buttons">
                 <button id="saveSceneButton">Save Scene</button>
                 <button id="loadSceneButton">Load Scene</button>
                 <button id="deleteSceneButton">Delete Scene</button>
             </div>
+
+            <br>
+            <div id="cameraListTitle">Active Cameras</div>
+            <ul id="cameraList">
+                <!-- Camera list items will be dynamically inserted here -->
+            </ul>
+
             <div id="cameraControls">
                 <!-- Recording controls will be dynamically inserted here -->
             </div>
+
+            <!-- Added Messages button at the bottom where scene buttons previously were -->
+            <div class="x32-button-container">
+                <a href="/x32" class="x32-button" target="_blank">X32 Channel Config</a>
+            </div>
+            <div class="messages-button-container">
+                <a href="/messages" class="messages-button" target="_blank">Messages</a>
+            </div>
+
+            <div class="lock-button-container">
+                <img id="lockIcon" src="/static/images/lock.png" title="Unock Toolbar" style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
+                <img id="unlockIcon" src="/static/images/unlock.png" title="Lock Toolbar" style="cursor:pointer; display:none; width:30px; height:30px;" />
+            </div>
         </div>
     </div>
+
     <div id="sceneLabel" class="clickable-label"></div>
     <!-- <div id="sceneLabel" style="position: absolute; top: 10px; right: 10px; color: white;"></div> -->
     <!-- Scene Selection Modal -->
