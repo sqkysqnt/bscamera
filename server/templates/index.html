@@ -7,6 +7,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 </head>
 <body>
+    <div id="loginModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2>Login</h2>
+            <input type="text" id="loginUsernameModal" placeholder="Username" required>
+            <input type="password" id="loginPasswordModal" placeholder="Password" required>
+            <button id="loginSubmitBtn">Login</button>
+            <div id="loginErrorModal" style="color:red; display:none;">Invalid credentials</div>
+        </div>
+    </div>
     <!-- Hover area to detect mouse movement -->
     <div class="toolbar-hover-area"></div>
 
@@ -44,8 +53,9 @@
             </div>
 
             <div class="lock-button-container">
-                <img id="lockIcon" src="/static/images/lock.png" title="Unock Toolbar" style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
+                <img id="lockIcon" src="/static/images/lock.png" title="Unlock Toolbar" style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
                 <img id="unlockIcon" src="/static/images/unlock.png" title="Lock Toolbar" style="cursor:pointer; display:none; width:30px; height:30px;" />
+                <img id="logoutIcon" src="/static/images/logout.png" title="Logout" style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
             </div>
         </div>
     </div>
@@ -69,6 +79,67 @@
     </div>
     <script>
         const lastSceneNumber = {{ last_scene_number or 'null' }};
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is logged in via an endpoint that returns logged_in status
+            fetch('/is_logged_in')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.logged_in) {
+                        // show login modal
+                        document.getElementById('loginModal').style.display = 'block';
+                    } else {
+                        // proceed with camera logic (fetchAndRenderCameras, etc.)
+                        fetchAndRenderCameras();
+                        fetchAndRenderCameraList();
+                        setupEventDelegation();
+                        setupResizeFunctionality();
+                    }
+                });
+                const logoutIcon = document.getElementById('logoutIcon');
+                logoutIcon.addEventListener('click', () => {
+                    fetch('/logout', {
+                        method: 'POST',
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'logged_out') {
+                            // Redirect to the main page, which should show the login modal again
+                            window.location.href = '/';
+                        }
+                    })
+                    .catch(error => console.error('Error logging out:', error));
+                });
+        });
+
+        document.getElementById('loginSubmitBtn').addEventListener('click', function() {
+            const username = document.getElementById('loginUsernameModal').value;
+            const password = document.getElementById('loginPasswordModal').value;
+            fetch('/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            })
+            .then(response => {
+                if(response.ok) return response.json();
+                else throw new Error('Login failed');
+            })
+            .then(data => {
+                if(data.status === 'success') {
+                    document.getElementById('loginModal').style.display = 'none';
+                    // Now load the cameras
+                    fetchAndRenderCameras();
+                    fetchAndRenderCameraList();
+                    setupEventDelegation();
+                    setupResizeFunctionality();
+                } else {
+                    document.getElementById('loginErrorModal').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                document.getElementById('loginErrorModal').style.display = 'block';
+            });
+        });
     </script>
     <!-- Include your JavaScript file -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
