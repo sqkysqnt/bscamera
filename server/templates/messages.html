@@ -11,71 +11,252 @@
     <div class="chat-container">
         <div class="toolbar">
             <h2>Theatre Chat</h2>
+            <div class="username-display" id="username-display"></div>
+            <div class="channel-select">
+                <button class="channel-button active" data-channel="cameras">Cameras</button>
+                <button class="channel-button" data-channel="audio">Audio</button>
+                <button class="channel-button" data-channel="lights">Lights</button>
+            </div>
+
+            <!-- Set username button at the bottom -->
+            <div class="set-username-container">
+                <button class="channel-button" id="set-username-button">Set Username</button>
+            </div>
         </div>
+
         <div class="main-chat">
             <div class="chat-window" id="chat-window">
-                {% for timestamp, sender_name, message, channel, me in messages %}
-                <div class="chat-message {% if me %}chat-me{% else %}chat-other{% endif %}">
+                {% for id, timestamp, sender_name, message, channel, me in messages %}
+                <div class="chat-message"
+                     data-id="{{ id }}"
+                     data-channel="{{ channel }}"
+                     data-sender-name="{{ sender_name }}"
+                     data-full-text="{{ message|e }}"
+                     data-timestamp="{{ timestamp }}">
                     <span class="chat-timestamp">[{{ timestamp }}]</span>
-                    {% if me %}
-                        <span class="chat-sender">Me:</span>
-                    {% else %}
-                        <span class="chat-sender">{{ sender_name }}:</span>
-                    {% endif %}
+                    <span class="chat-sender">{{ sender_name }}:</span>
                     <span class="chat-text">{{ message }}</span>
                 </div>
-            {% endfor %}
-            
+                {% endfor %}
             </div>
-            
-            
+
             <div class="chat-input-container">
                 <input type="text" class="chat-input" id="message-input" placeholder="Type a message... (Press Enter to send)">
+                <div class="emoji-container">
+                    <button class="emoji-button" id="emoji-button">😊</button>
+                    <div class="emoji-menu" id="emoji-menu">
+                        <!-- Emojis will be inserted here -->
+                    </div>
+                </div>
                 <button class="chat-send" id="send-button">Send</button>
             </div>
         </div>
     </div>
+
+    <!-- Modal for full message display -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Full Message</span>
+                <span class="close-modal" id="close-modal">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Full message text will be inserted here -->
+            </div>
+        </div>
+    </div>
+
     <script>
         const socket = io();
-    
-        // Listen for new messages
+        let selectedChannel = 'cameras';
+
+        // Large array of emojis (expand as desired)
+        // Here’s a representative large subset of emojis:
+        const emojis = [
+          ..."😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😜😝🤑🤗🤔🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤤😴😪😵🤐🤢🤮🤧😷🤒🤕🤑🥴🤠😈👿👹👺🤡👻💀👽🤖💩🙈🙉🙊👋🤚🖐✋🖖👌✌🤞🤟🤘🤙👍👎👊🤛🤜👏🙌👐🤲🙏"
+        ];
+        // You can add more emojis if desired.
+
+        function updateUsernameDisplay() {
+            const display = document.getElementById('username-display');
+            if (chosenUsername) {
+                display.textContent = "Username: " + chosenUsername;
+            } else {
+                display.textContent = "No username set";
+            }
+        }
+
+        let chosenUsername = localStorage.getItem('username');
+        if (!chosenUsername) {
+            const deviceInfo = navigator.platform || navigator.userAgent || 'User';
+            const baseName = deviceInfo.split(' ')[0];
+            chosenUsername = baseName + '-' + Math.floor(Math.random() * 1000);
+            localStorage.setItem('username', chosenUsername);
+        }
+        updateUsernameDisplay();
+
+        document.getElementById('set-username-button').addEventListener('click', () => {
+            const oldUsername = chosenUsername;
+            const newUsername = prompt("Enter your new username:");
+            if (newUsername && newUsername.trim() !== '') {
+                chosenUsername = newUsername.trim();
+                localStorage.setItem('username', chosenUsername);
+                updateUsernameDisplay();
+                applyFilters();
+                // Inform server of username change
+                socket.emit('username_change', { old_username: oldUsername, new_username: chosenUsername });
+            }
+        });
+
         socket.on('new_message', (data) => {
             const chatWindow = document.getElementById('chat-window');
+            
+            const existingMessage = chatWindow.querySelector(`.chat-message[data-id="${data.id}"]`);
+            if (existingMessage) {
+                return;
+            }
+
             const messageElement = document.createElement('div');
-            messageElement.classList.add('chat-message');
-            messageElement.classList.add(data.me ? 'chat-me' : 'chat-other');
-    
+            const isMe = (data.sender_name === chosenUsername);
+            messageElement.classList.add('chat-message', isMe ? 'chat-me' : 'chat-other');
+            messageElement.setAttribute('data-id', data.id);
+            messageElement.setAttribute('data-channel', data.channel);
+            messageElement.setAttribute('data-sender-name', data.sender_name);
+            messageElement.setAttribute('data-full-text', data.message);
+            messageElement.setAttribute('data-timestamp', data.timestamp);
+
             messageElement.innerHTML = `
                 <span class="chat-timestamp">[${data.timestamp}]</span>
-                <span class="chat-sender">${data.me ? 'Me:' : data.sender_name + ':'}</span>
+                <span class="chat-sender">${data.sender_name}:</span>
                 <span class="chat-text">${data.message}</span>
             `;
-    
+
             chatWindow.appendChild(messageElement);
-            chatWindow.scrollTop = chatWindow.scrollHeight; // Auto-scroll to latest message
+
+            const allMessages = chatWindow.querySelectorAll('.chat-message');
+            if (allMessages.length > 50) {
+                chatWindow.removeChild(allMessages[0]);
+            }
+
+            chatWindow.scrollTop = chatWindow.scrollHeight; 
+            applyFilters();
         });
-    
-        // Function to send message
+
         function sendMessage() {
             const messageInput = document.getElementById('message-input');
             const message = messageInput.value.trim();
-    
-            if (message !== '') {
-                socket.emit('send_message', { message: message });
+            if (message !== '' && chosenUsername !== '') {
+                socket.emit('send_message', { 
+                    message: message, 
+                    channel: selectedChannel,
+                    username: chosenUsername
+                });
                 messageInput.value = '';
+            } else if (chosenUsername === '') {
+                alert("Please set a username before sending messages.");
             }
         }
-    
-        // Send message when "Send" button is clicked
+
         document.getElementById('send-button').addEventListener('click', sendMessage);
-    
-        // Send message when "Enter" key is pressed
         document.getElementById('message-input').addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
-                event.preventDefault(); // Prevent new line in input
+                event.preventDefault();
                 sendMessage();
             }
         });
+
+        function applyFilters() {
+            const allMessages = document.querySelectorAll('.chat-message');
+            allMessages.forEach(msg => {
+                const msgChannel = msg.getAttribute('data-channel');
+                if (msgChannel === selectedChannel) {
+                    msg.style.display = 'block';
+                } else {
+                    msg.style.display = 'none';
+                }
+            });
+        }
+
+        const channelButtons = document.querySelectorAll('.channel-button');
+        channelButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                channelButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                selectedChannel = button.getAttribute('data-channel');
+                applyFilters();
+            });
+        });
+
+        applyFilters();
+
+        // Modal logic
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalBody = document.getElementById('modal-body');
+        const closeModalBtn = document.getElementById('close-modal');
+        const modalTitleElem = document.querySelector('.modal-title');
+
+        closeModalBtn.addEventListener('click', () => {
+            modalOverlay.style.display = 'none';
+            modalBody.innerHTML = '';
+        });
+
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                modalOverlay.style.display = 'none';
+                modalBody.innerHTML = '';
+            }
+        });
+
+        document.getElementById('chat-window').addEventListener('click', (e) => {
+            const messageElem = e.target.closest('.chat-message');
+            if (messageElem) {
+                const fullText = messageElem.getAttribute('data-full-text');
+                const timestamp = messageElem.getAttribute('data-timestamp');
+                const sender = messageElem.getAttribute('data-sender-name');
+                modalTitleElem.textContent = `Full Message - [${timestamp}] [${sender}]`;
+                modalBody.textContent = fullText;
+                modalOverlay.style.display = 'flex';
+            }
+        });
+
+        // Emoji menu logic
+        const emojiButton = document.getElementById('emoji-button');
+        const emojiMenu = document.getElementById('emoji-menu');
+        const messageInput = document.getElementById('message-input');
+
+        // Insert emojis into menu
+        emojis.forEach(emoji => {
+            const span = document.createElement('span');
+            span.classList.add('emoji-item');
+            span.textContent = emoji;
+            span.addEventListener('click', () => {
+                // Insert chosen emoji into message input
+                messageInput.value += emoji;
+                // Hide menu after selection
+                emojiMenu.style.display = 'none';
+            });
+            emojiMenu.appendChild(span);
+        });
+
+        emojiButton.addEventListener('click', () => {
+            // Toggle display of emoji menu
+            if (emojiMenu.style.display === 'block') {
+                emojiMenu.style.display = 'none';
+            } else {
+                emojiMenu.style.display = 'block';
+            }
+        });
+
+        // Hide emoji menu if click outside
+        document.addEventListener('click', (e) => {
+            if (!emojiButton.contains(e.target) && !emojiMenu.contains(e.target)) {
+                emojiMenu.style.display = 'none';
+            }
+        });
+
+
+
+
     </script>
 </body>
 </html>
