@@ -65,6 +65,9 @@
             <label for="x32_ip">X32 Mixer IP:</label>
             <input type="text" id="x32_ip" name="x32_ip" value="{{ config['x32_ip'] }}">
             <input type="submit" value="Update X32 IP">
+            <h2>Enable/Disable Periodic Check</h2>
+            <p>Current State: <span id="currentState">{{ 'Enabled' if config['enabled'] else 'Disabled' }}</span></p>
+            <button id="toggleButton">Toggle Periodic Check</button>
         </form>
 
         <h2>Add Channel Target</h2>
@@ -193,6 +196,16 @@
                 body: formData
             }).then(response => response.json()).then(data => {
                 alert(data.message);
+            });
+        });
+
+        document.getElementById('toggleButton').addEventListener('click', function() {
+            fetch('/x32/toggle_enabled', {
+                method: 'POST'
+            }).then(response => response.json()).then(data => {
+                alert(data.message);
+                // Optionally update the display text
+                document.getElementById('currentState').textContent = data.message.includes('enabled') ? 'Enabled' : 'Disabled';
             });
         });
     </script>
