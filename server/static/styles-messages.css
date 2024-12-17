@@ -11,13 +11,9 @@ body, html {
     background-color: #000;
     color: #e0e0e0;
     font-family: 'Arial', sans-serif;
-    overflow: hidden;
+    overflow: auto;
 }
 
-.chat-container {
-    display: flex;
-    height: 100vh;
-}
 
 .toolbar {
     width: 20%;
@@ -26,27 +22,70 @@ body, html {
     color: #e0e0e0;
     padding: 10px;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
 }
 
+.toolbar h2 {
+    margin-bottom: 20px;
+}
+
+.chat-container {
+    display: flex;
+    height: 100vh;
+}
+
+.channel-select {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.channel-button {
+    padding: 10px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+}
+
+.channel-button:hover {
+    background-color: #3c3c3c;
+}
+
+.channel-button.active {
+    background-color: #4c4c4c;
+    font-weight: bold;
+}
+
+.set-username-container {
+    margin-top: auto;
+}
+
 .main-chat {
+    width: 80%;      
     flex: 1;
     display: flex;
     flex-direction: column;
     background-color: #121212;
 }
 
-/* Chat window styling */
-.chat-window {
+.chat-window {  
     flex: 1;
     overflow-y: auto;
     padding: 10px;
-    background-color: #121212; /* Slightly lighter for contrast */
-    color: #e0e0e0; /* Light text for messages */
+    background-color: #121212;
+    color: #e0e0e0;
 }
 
 .chat-input-container {
     display: flex;
+    align-items: center;
     padding: 10px;
     background-color: #1a1a1a;
     border-top: 1px solid #333;
@@ -58,6 +97,7 @@ body, html {
     background-color: #2c2c2c;
     color: #e0e0e0;
     border-radius: 5px;
+    margin-right: 10px;
 }
 
 .chat-input:focus {
@@ -65,9 +105,52 @@ body, html {
     background-color: #3c3c3c;
 }
 
+/* Emoji button and menu */
+.emoji-container {
+    position: relative;
+    margin-right: 10px;
+}
+
+.emoji-button {
+    background-color: #2c2c2c;
+    color: #fff;
+    border-radius: 5px;
+    padding: 10px;
+    cursor: pointer;
+}
+
+.emoji-button:hover {
+    background-color: #3c3c3c;
+}
+
+.emoji-menu {
+    display: none;
+    position: absolute;
+    bottom: 50px;
+    left: -450px;
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 5px;
+    width: 500px;
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 10px;
+    z-index: 1000;
+}
+
+.emoji-item {
+    display: inline-block;
+    padding: 5px;
+    font-size: 1.2em;
+    cursor: pointer;
+}
+
+.emoji-item:hover {
+    background-color: #2c2c2c;
+    border-radius: 3px;
+}
+
 .chat-send {
-    flex: 1;
-    margin-left: 10px;
     padding: 10px;
     background-color: #3c3c3c;
     color: #e0e0e0;
@@ -79,18 +162,18 @@ body, html {
     background-color: #4c4c4c;
 }
 
-/* Message bubbles */
+/* Messages */
 .chat-message {
-    white-space: nowrap; /* Ensure messages stay on one line */
+    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis; /* Optional: truncate with ellipsis if too long */
-    margin-bottom: 10px; /* Minimal spacing between messages */
+    text-overflow: ellipsis;
+    margin-bottom: 10px;
+    cursor: pointer; 
 }
 
-/* Common styles for timestamps and text */
 .chat-timestamp {
     font-size: 0.8em;
-    color: #b0b0b0; /* Dimmed timestamp color */
+    color: #b0b0b0;
     margin-bottom: 10px;
 }
 
@@ -98,20 +181,105 @@ body, html {
     font-weight: bold;
 }
 
-/* Messages from me (right-aligned) */
 .chat-me {
     margin-left: auto;
-    background-color: #2a2a2a; /* Different background for my messages */
+    background-color: #2a2a2a;
     text-align: right;
 }
 
-/* Messages from others (left-aligned) */
 .chat-other {
     margin-right: auto;
-    background-color: #1a1a1a; /* Background for other users' messages */
+    background-color: #1a1a1a;
 }
 
 .chat-text {
     word-wrap: break-word;
     font-size: 1em;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right:0;
+    bottom:0;
+    background: rgba(0,0,0,0.7);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    border-radius: 5px;
+    width: 80%;
+    max-width: 600px;
+    max-height: 80%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: #2c2c2c;
+    border-bottom: 1px solid #333;
+}
+
+.modal-title {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+.close-modal {
+    cursor: pointer;
+    font-size: 1.5em;
+    font-weight: bold;
+}
+
+.modal-body {
+    padding: 10px;
+    overflow-y: auto;
+    max-height: calc(100% - 40px);
+}
+
+@media (max-width: 600px) {
+    .emoji-button {
+        display: none;
+    }
+
+    .chat-container {
+        flex-direction: column;
+    }
+
+    .toolbar {
+        width: 100%;
+        height: auto;
+    }
+
+    .main-chat {
+        width: 100%;
+        height: calc(100vh - 200px);
+    }
+
+    .channel-select,
+    .set-username-container {
+        width: 100%;
+    }
+
+    .channel-button,
+    .set-username-button {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .chat-window {
+        height: calc(100vh - 300px);
+    }
 }
