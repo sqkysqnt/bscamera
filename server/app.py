@@ -25,15 +25,31 @@ import atexit
 import urllib3
 import base64
 import subprocess
+from x32_app.x32_channel import x32_bp, periodic_check
+from flask import session
+from functools import wraps
+
+
+
+# Store login credentials on the server (for demo only; consider environment variables or a separate config file)
+VALID_USERNAME = "hector"
+VALID_PASSWORD = "hector"
 
 http = urllib3.PoolManager()
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')
+app.register_blueprint(x32_bp, url_prefix='/x32')
+
+# Set a secret key for session:
+app.secret_key = "yoursecretkey"  # Change this to a secure value in production.
 
 # Set up the dispatcher to handle specific OSC addresses
 dispatcher = Dispatcher()
+
+check_thread = threading.Thread(target=periodic_check, daemon=True)
+check_thread.start()
 
 camera_cache = {}  # Keyed by IP address
 CACHE_DURATION = 300  # 5 minutes
@@ -51,8 +67,13 @@ last_loaded_scene = None  # Global variable to track last loaded scene
 # Import the theatrechat module after initializing app, socketio, and dispatcher
 import theatrechat
 
+def get_num_cameras():
+    cameras = load_current_scene_cameras()
+    return len(cameras)
+
 # Initialize TheatreChat with necessary objects
-theatrechat.init_theatrechat(app, socketio, dispatcher, OSC_PORT)
+theatrechat.init_theatrechat(app, socketio, dispatcher, OSC_PORT, get_num_cameras)
+
 
 
 camera_streams = {}  # Global dictionary to store camera streams
@@ -110,7 +131,13 @@ class CameraStream:
                 logging.error(f"Error fetching frames from camera {self.ip_address}: {e}")
                 time.sleep(2)  # Slight delay before retrying
 
-
+    def login_required(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'logged_in' not in session or not session['logged_in']:
+                return render_template("login.html")  # or return a redirect if preferred
+            return f(*args, **kwargs)
+        return decorated_function
 
 
     def get_frame(self):
@@ -379,13 +406,14 @@ def osc_load_scene_handler(address, *args):
 
             # Notify the front-end to refresh the camera layout
             logging.info("Notifying front-end to refresh camera layout.")
-            notify_frontend_scene_loaded()
+            socketio.emit('scene_loaded', scene)
 
             logging.info(f"Scene {scene_number} loaded via OSC.")
         else:
             logging.error(f"Scene {scene_number} not found.")
     else:
         logging.error(f"Invalid OSC address: {address}. No scene number found.")
+
 
 
 def notify_frontend_scene_loaded():
@@ -440,6 +468,8 @@ def start_osc_server():
 # osc_thread.start()
 
 
+
+
 def load_cameras():
     with FileLock(LOCK_FILE):
         try:
@@ -455,9 +485,18 @@ def save_cameras(cameras):
         with open(CAMERAS_FILE, 'w') as f:
             json.dump(cameras, f, indent=4)
 
+@app.route('/is_logged_in')
+def is_logged_in():
+    return jsonify({'logged_in': session.get('logged_in', False)})
+
 
 @app.route('/')
 def index():
+    # If not logged in, show just a placeholder or login page:
+    if 'logged_in' not in session or not session['logged_in']:
+        return render_template('login.html')
+
+    # If logged in, proceed as normal
     scenes = load_scenes()
     if scenes['lastScene']:
         last_scene_number = scenes['lastScene']
@@ -465,36 +504,101 @@ def index():
         last_scene_number = None
     return render_template('index.html', last_scene_number=last_scene_number)
 
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if username == VALID_USERNAME and password == VALID_PASSWORD:
+        session['logged_in'] = True
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'fail'}), 401
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'logged_out'})
+
 
 @app.route('/add_camera', methods=['POST'])
 def add_camera():
     ip_address = request.form.get('ip_address')
-    cameras = load_current_scene_cameras()
+    if not ip_address:
+        app.logger.error("No IP address provided when adding camera.")
+        return jsonify({'error': 'No IP provided'}), 400
+    # Load all scenes and identify the current scene
+    scenes = load_scenes()
+    last_scene_number = scenes.get('lastScene')
+    if last_scene_number is None:
+        # If there's no current scene, create one
+        last_scene_number = 1
+        scenes['lastScene'] = last_scene_number
+        scenes['scenes'].append({
+            'sceneNumber': last_scene_number,
+            'sceneName': f"Scene {last_scene_number}",
+            'cameras': []
+        })
 
-    # Check if the camera is already added
-    if ip_address and not any(camera['ip'] == ip_address for camera in cameras):
-        # Assign default size, position, and name (if not provided)
+    # Find the current scene
+    current_scene = next((s for s in scenes['scenes'] if s['sceneNumber'] == last_scene_number), None)
+    if current_scene is None:
+        # If no current scene found, create it
+        current_scene = {
+            'sceneNumber': last_scene_number,
+            'sceneName': f"Scene {last_scene_number}",
+            'cameras': []
+        }
+        scenes['scenes'].append(current_scene)
+
+    # Check if camera already exists in any scene
+    camera_already_exists = any(
+        any(cam['ip'] == ip_address for cam in scene['cameras'])
+        for scene in scenes['scenes']
+    )
+
+    if not camera_already_exists and ip_address:
+        # Create the new camera with default properties
         new_camera = {
             "ip": ip_address,
             "name": "Unnamed Camera",  # Default camera name
             "position": {
-                "left": len(cameras) * 350,
-                "top": len(cameras) * 100
+                "left": len(current_scene['cameras']) * 350,
+                "top": len(current_scene['cameras']) * 100
             },
             "size": {
                 "width": 320,
                 "height": 240
             },
-            "visible": True
+            "visible": True  # Visible in the current scene
         }
-        cameras.append(new_camera)
-        save_current_scene_cameras(cameras)
+
+        # Add the camera to the current scene
+        current_scene['cameras'].append(new_camera)
+
+        # Add this camera to all other scenes, but hidden
+        for scene in scenes['scenes']:
+            if scene['sceneNumber'] != last_scene_number:
+                # If the camera doesn't exist in this scene, add it as hidden
+                if not any(cam['ip'] == ip_address for cam in scene['cameras']):
+                    hidden_camera = new_camera.copy()
+                    hidden_camera['visible'] = False
+                    # Make sure to not copy by reference (dict), do a shallow copy and change fields if needed
+                    hidden_camera['position'] = hidden_camera['position'].copy()
+                    hidden_camera['size'] = hidden_camera['size'].copy()
+                    scene['cameras'].append(hidden_camera)
+
+        # Save changes to all scenes
+        save_scenes(scenes)
 
     return '', 204
 
 
+
 @app.route('/remove_camera/<ip_address>')
 def remove_camera(ip_address):
+    # Remove from the current scene cameras
     cameras = load_current_scene_cameras()
     cameras = [camera for camera in cameras if camera['ip'] != ip_address]
     save_current_scene_cameras(cameras)
@@ -508,7 +612,18 @@ def remove_camera(ip_address):
         except Exception as e:
             logging.error(f"Error stopping camera stream for {ip_address}: {e}")
 
+    # Now remove the camera from EVERY scene
+    scenes = load_scenes()
+    for scene in scenes['scenes']:
+        original_count = len(scene['cameras'])
+        scene['cameras'] = [cam for cam in scene['cameras'] if cam['ip'] != ip_address]
+        if len(scene['cameras']) < original_count:
+            logging.info(f"Camera {ip_address} removed from scene {scene['sceneNumber']}")
+
+    save_scenes(scenes)
+
     return '', 204
+
 
 
 
@@ -532,7 +647,7 @@ def camera_stream(ip_address):
 
     try:
         # Fetch the camera's stream
-        response = http.request('GET', stream_url, preload_content=False, timeout=urllib3.Timeout(connect=2.0, read=5.0))
+        response = http.request('GET', stream_url, preload_content=False, timeout=urllib3.Timeout(connect=5.0, read=10.0))
         
         # Get the Content-Type header from the camera's response
         content_type = response.headers.get('Content-Type')
@@ -615,23 +730,39 @@ def camera_settings(ip_address):
 def update_camera():
     data = request.get_json()
     if data is None:
-        logging.error("No JSON data received in update_camera")
+        app.logger.error("No JSON data received in update_camera")
         return jsonify({'error': 'No data received'}), 400
-    ip = data.get('ip')
-    if not ip:
-        logging.error("No 'ip' key in data received in update_camera")
-        return jsonify({'error': 'No IP address provided'}), 400
-    cameras = load_current_scene_cameras()
 
-    # Find the camera and update position and size
+    ip = data.get('ip')
+    if not ip or not isinstance(ip, str):
+        app.logger.error("Invalid or missing 'ip' in update_camera")
+        return jsonify({'error': 'No IP address provided'}), 400
+
+    position = data.get('position', {})
+    size = data.get('size', {})
+
+    if not (isinstance(position.get('left'), int) and isinstance(position.get('top'), int) and 
+            isinstance(size.get('width'), int) and isinstance(size.get('height'), int)):
+        app.logger.error("Invalid position/size data in update_camera")
+        return jsonify({'error': 'Invalid position/size values'}), 400
+
+    cameras = load_current_scene_cameras()
+    camera_found = False
     for camera in cameras:
         if camera['ip'] == ip:
-            camera['position'] = data['position']
-            camera['size'] = data['size']
+            camera['position'] = position
+            camera['size'] = size
+            camera_found = True
             break
 
+    if not camera_found:
+        app.logger.error(f"No camera found for IP {ip} in current scene")
+        return jsonify({'error': 'Camera not found'}), 400
+
     save_current_scene_cameras(cameras)
-    return '', 204  # No content response
+    return '', 204
+
+
 
 
 
@@ -639,9 +770,14 @@ def update_camera():
 def load_scenes():
     try:
         with open(SCENES_FILE, 'r') as f:
-            return json.load(f)
+            data = f.read().strip()
+            if not data:
+                # File is empty, initialize default structure
+                return {"scenes": [], "lastScene": None}
+            return json.loads(data)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logging.error(f"Error loading scenes: {e}")
+        # Return a default structure if file not found or invalid JSON
         return {"scenes": [], "lastScene": None}
 
 
@@ -665,21 +801,32 @@ def save_current_scene_cameras(cameras):
     scenes = load_scenes()
     last_scene_number = scenes.get('lastScene')
     if last_scene_number is None:
-        # If there's no last scene, create one
         last_scene_number = 1
         scenes['lastScene'] = last_scene_number
         scenes['scenes'].append({
             'sceneNumber': last_scene_number,
             'sceneName': f"Scene {last_scene_number}",
-            'cameras': cameras
+            'cameras': []
         })
-    else:
-        # Update the cameras in the current scene
-        for scene in scenes['scenes']:
-            if scene['sceneNumber'] == last_scene_number:
-                scene['cameras'] = cameras
-                break
+
+    # Validate cameras and ensure all fields are populated
+    for camera in cameras:
+        if not camera.get("ip"):
+            app.logger.warning("Camera with missing IP found. Assigning default 0.0.0.0.")
+            camera["ip"] = "0.0.0.0"
+        camera.setdefault("name", "Unnamed Camera")
+        camera.setdefault("position", {"left": 0, "top": 0})
+        camera.setdefault("size", {"width": 320, "height": 240})
+        camera.setdefault("visible", True)
+
+    # Update the cameras in the current scene
+    for scene in scenes['scenes']:
+        if scene['sceneNumber'] == last_scene_number:
+            scene['cameras'] = cameras
+            break
+
     save_scenes(scenes)
+
 
 
 @app.route('/save_scene', methods=['POST'])
@@ -687,6 +834,14 @@ def save_scene():
     scene_data = request.json
     scene_number = scene_data['sceneNumber']
     scene_name = scene_data.get('sceneName', f"Scene {scene_number}")
+
+    # Validate and ensure all required fields in cameras
+    for camera in scene_data.get('cameras', []):
+        camera.setdefault("ip", "0.0.0.0")  # Provide a default IP if missing
+        camera.setdefault("name", "Unnamed Camera")  # Default name
+        camera.setdefault("position", {"left": 0, "top": 0})
+        camera.setdefault("size", {"width": 320, "height": 240})
+        camera.setdefault("visible", True)
 
     scenes = load_scenes()
 
@@ -705,11 +860,13 @@ def save_scene():
 
 @app.route('/update_camera_visibility', methods=['POST'])
 def update_camera_visibility():
-    data = request.json
-    ip = data['ip']
-    is_visible = data['visible']
+    data = request.get_json()
+    if not data or 'ip' not in data:
+        return jsonify({'error': 'IP address not provided'}), 400
 
-    # Load current scene cameras
+    ip = data['ip']
+    is_visible = data.get('visible', True)
+
     cameras = load_current_scene_cameras()
 
     # Update the visibility of the camera
@@ -718,10 +875,9 @@ def update_camera_visibility():
             camera['visible'] = is_visible
             break
 
-    # Save the updated scene
     save_current_scene_cameras(cameras)
-
     return '', 204
+
 
 
 last_loaded_scene = None  # Global variable to track the last loaded scene
@@ -755,7 +911,7 @@ def load_scene(scene_number):
             save_scenes(scenes)
             last_loaded_scene = scene_number
             # Emit the scene data via Socket.IO
-            socketio.emit('scene_loaded', scene, to='*')
+            socketio.emit('scene_loaded', scene)
             logging.info(f"Scene {scene_number} loaded and emitted via Socket.IO.")
         else:
             logging.info(f"Scene {scene_number} is already loaded.")
