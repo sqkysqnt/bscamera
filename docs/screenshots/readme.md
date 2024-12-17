@@ -44,16 +44,16 @@
 ## Mobile Images
 
 ### Messages
-![Messages](mobile_messages.jpg)
+<img src="mobile_messages.jpg" alt="Messages" width="300"/>
 
 ### Change Username
-![Change Username](mobile_messages_changeusername.jpg)
+<img src="mobile_messages_changeusername.jpg" alt="Change Username" width="300"/>
 
 ### Emoji Picker
-![Emoji Picker](mobile_messages_emoji.jpg)
+<img src="mobile_messages_emoji.jpg" alt="Emoji Picker" width="300"/>
 
 ### Keyboard
-![Keyboard](mobile_messages_keyboard.jpg)
+<img src="mobile_messages_keyboard.jpg" alt="Keyboard" width="300"/>
 
 ### Overflow Menu
-![Overflow Menu](mobile_messages_overflow.jpg)
+<img src="mobile_messages_overflow.jpg" alt="Overflow Menu" width="300"/>
