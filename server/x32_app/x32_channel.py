@@ -1,3 +1,5 @@
+# In x32_channel.py:
+
 import socket
 import struct
 import time
@@ -11,15 +13,13 @@ from flask import Blueprint
 
 x32_bp = Blueprint('x32', __name__, template_folder='templates')
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)  # Set log level as needed (DEBUG, INFO, WARNING, ERROR)
+logging.basicConfig(level=logging.INFO)
 
-# JSON configuration file for settings persistence
 CONFIG_FILE = "config.json"
 
-# Load default settings or existing settings from the config file
 default_config = {
     "x32_ip": "192.168.1.23",
+    "enabled": True,  # Add an enabled flag
     "channel_targets": {
         # Add your channel targets here
     },
@@ -30,6 +30,8 @@ default_config = {
     }
 }
 
+config_lock = threading.Lock()
+config = {}
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -47,11 +49,8 @@ def save_config(config):
         json.dump(config, f, indent=4)
         logging.info("Configuration saved to %s", CONFIG_FILE)
 
-# Global configuration
-config_lock = threading.Lock()
 config = load_config()
 
-# Utility functions for OSC communication
 def osc_encode_string(s):
     s += '\0'
     padding = (4 - (len(s) % 4)) % 4
@@ -108,7 +107,6 @@ def receive_response(sock):
         logging.warning("No response received from X32 within timeout.")
     return None, None
 
-# Periodic checking logic
 def periodic_check():
     local_ip = "0.0.0.0"
     local_port = 55000  # Use an available port number
@@ -124,7 +122,14 @@ def periodic_check():
 
     try:
         while True:
+            # Check if functionality is enabled
             with config_lock:
+                if not config.get("enabled", True):
+                    # If disabled, either do nothing or break out to stop thread
+                    # Here we will just sleep until re-enabled
+                    time.sleep(2.5)
+                    continue
+
                 current_config = json.loads(json.dumps(config))  # Deep copy of config
 
             x32_ip = current_config["x32_ip"]
@@ -308,3 +313,14 @@ def send_test_message():
         else:
             logging.warning("No targets found for channel %d to send test message '%s'.", channel, message_type)
             return jsonify({"status": "error", "message": f"No targets found for channel {channel:02d}."})
+
+# New route to toggle the periodic check on/off
+@x32_bp.route('/toggle_enabled', methods=['POST'])
+def toggle_enabled():
+    with config_lock:
+        current_state = config.get("enabled", True)
+        config["enabled"] = not current_state
+        save_config(config)
+        state_str = "enabled" if config["enabled"] else "disabled"
+        logging.info("Periodic check has been %s", state_str)
+    return jsonify({"status": "success", "message": f"Periodic check is now {state_str}."})
