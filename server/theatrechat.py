@@ -56,74 +56,76 @@ def register_socketio_handlers():
     @socketio.on('send_message')
     def handle_send_message_event(data):
         message = data.get('message')
-        channel = DEFAULT_CHANNEL  # Use your default or specified channel
-        sender = SENDER_NAME       # Use the server's configured sender name
+        channel = data.get('channel', DEFAULT_CHANNEL)
+        # Get the username from the client data or fallback if not provided
+        sender = data.get('username', SENDER_NAME)
 
         if not message:
-            return  # Or you can emit an error back to the client
+            return
 
-        # Extract the command (second part of the message)
-        parts = message.split(' ', 1)
-        if len(parts) < 2:
-            return  # Handle messages without commands appropriately
-        target, command = parts
+        if channel == "cameras":
+            # Cameras channel requires target and command
+            parts = message.split(' ', 1)
+            if len(parts) < 2:
+                return
+            target, command = parts
 
-        # Get the number of cameras
-        if get_num_cameras is not None:
-            numCamList = get_num_cameras()
+            # Number of cameras for reply logic
+            if get_num_cameras is not None:
+                numCamList = get_num_cameras()
+            else:
+                numCamList = 0
+
+            # Send OSC
+            send_osc_message_chat(message, channel, sender)
+
+            # Create pending command if needed
+            command_id = str(uuid.uuid4())
+            with pending_commands_lock:
+                pending_commands[command_id] = {
+                    'command': command,
+                    'target': target,
+                    'sent_time': datetime.now(),
+                    'replies_received': set(),
+                    'num_expected_replies': numCamList if target == 'all' else 1,
+                    'resend_attempts': 0,
+                    'message': message,
+                    'channel': channel,
+                    'sender': sender
+                }
+
+            timer = threading.Timer(1.0, check_for_replies, args=(command_id,))
+            timer.start()
+
         else:
-            numCamList = 0  # Default value if function is not set
+            # Non-cameras channels: just send once
+            send_osc_message_chat(message, channel, sender)
 
-        # Send the OSC message
-        send_osc_message_chat(message, channel, sender)
-
-        # Create a unique command ID
-        command_id = str(uuid.uuid4())
-
-        # Create pending command entry
-        with pending_commands_lock:
-            pending_commands[command_id] = {
-                'command': command,
-                'target': target,
-                'sent_time': datetime.now(),
-                'replies_received': set(),
-                'num_expected_replies': numCamList if target == 'all' else 1,
-                'resend_attempts': 0,
-                'message': message,
-                'channel': channel,
-                'sender': sender
-            }
-
-        # Start a timer to check for replies after 1 second
-        timer = threading.Timer(1.0, check_for_replies, args=(command_id,))
-        timer.start()
-
-        # Get the current timestamp
+        # Insert into DB
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        # Insert into the database as "me" and enforce message limit
         conn = sqlite3.connect('messages.db')
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO messages (timestamp, address, sender_name, message, channel, me)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (timestamp, f'/theatrechat/message/{channel}', sender, message, channel, True))
+        ''', (timestamp, f'/theatrechat/message/{channel}', sender, message, channel, False))
         conn.commit()
 
-        # Enforce the 100-message limit
-        enforce_message_limit(cursor)
-
-        conn.commit()
+        new_message_id = cursor.lastrowid  # Get the newly inserted message ID
         conn.close()
 
-        # Broadcast the new message to all connected clients
+        # Do not call enforce_message_limit since we want to keep all messages
+        # socketio emit including the new_message_id
         socketio.emit('new_message', {
+            'id': new_message_id,
             'timestamp': timestamp,
-            'sender_name': 'Me',
+            'sender_name': sender,
             'message': message,
-            'channel': channel,
-            'me': True
+            'channel': channel
         })
+
+
+
 
 
 def check_for_replies(command_id):
@@ -227,35 +229,36 @@ def init_db():
     conn.close()
 
 
-def osc_theatrechat_message_handler(address, sender_name, message_text):
+def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_args):
     logging.info(f"Received TheatreChat message: Address: {address}, Sender: {sender_name}, Message: {message_text}")
 
-    # Get the current timestamp
+    if "local_origin" in extra_args:
+        # This message came from our own server
+        return
+
+    # Prevent processing of messages that the server itself sent
+    if sender_name == SENDER_NAME:
+        return
+
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    channel = address.split("/")[-1]
+    is_me = (sender_name == SENDER_NAME)
 
-    # Assume the channel is extracted from the address for now
-    channel = address.split("/")[-1]  # E.g., "cameras"
-    is_me = sender_name == SENDER_NAME  # Mark 'me' based on sender name
-
-    # Check if this message is a reply to any pending commands
+    # Check pending commands for replies if needed
     with pending_commands_lock:
         pending_commands_items = list(pending_commands.items())
-
     for command_id, pending_command in pending_commands_items:
-        # If the message contains the command
         if pending_command['command'] in message_text:
             with pending_commands_lock:
-                # Add sender to the replies_received set
                 pending_command['replies_received'].add(sender_name)
                 logging.info(f"Received reply from {sender_name} for command {pending_command['command']}")
-
-                # If we have received all expected replies, we can remove the pending command
                 if len(pending_command['replies_received']) >= pending_command['num_expected_replies']:
                     del pending_commands[command_id]
                     logging.info(f"Received all expected replies for command {pending_command['command']}")
-            break  # Assuming a message can only be a reply to one command
+            break
 
-    # Insert the message into the database and enforce message limit
+
+
     conn = sqlite3.connect('messages.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -264,20 +267,18 @@ def osc_theatrechat_message_handler(address, sender_name, message_text):
     ''', (timestamp, address, sender_name, message_text, channel, is_me))
     conn.commit()
 
-    # Enforce the 100-message limit
-    enforce_message_limit(cursor)
-
-    conn.commit()
+    new_message_id = cursor.lastrowid
     conn.close()
 
-    # Broadcast the new message
+    # Emit the new message to clients
     socketio.emit('new_message', {
+        'id': new_message_id,
         'timestamp': timestamp,
         'sender_name': sender_name,
         'message': message_text,
-        'channel': channel,
-        'me': is_me
+        'channel': channel
     })
+
 
 
 def enforce_message_limit(cursor):
@@ -308,7 +309,7 @@ def send_osc_message_chat(message, channel, sender):
         osc_address = f"/theatrechat/message/{channel}"
 
         # Send the OSC message using the constructed address
-        osc_client.send_message(osc_address, [sender, message])
+        osc_client.send_message(osc_address, [sender, message, "local_origin"])
 
         logging.info(f"Sending OSC message to {BROADCAST_IP}:{OSC_PORT}")
         logging.info(f"OSC Address: {osc_address}")
@@ -321,15 +322,16 @@ def send_osc_message_chat(message, channel, sender):
 def messages_page():
     conn = sqlite3.connect('messages.db')
     cursor = conn.cursor()
+    # Select the last 50 messages by ordering by ID descending and limiting to 50
     cursor.execute('''
-        SELECT timestamp, sender_name, message, channel, me 
-        FROM messages 
-        ORDER BY id DESC 
-        LIMIT 100
+        SELECT id, timestamp, sender_name, message, channel, me 
+        FROM messages
+        ORDER BY id DESC
+        LIMIT 50
     ''')
     messages = cursor.fetchall()
     conn.close()
 
-    # Reverse the order to display messages from oldest to newest
+    # Reverse to show from oldest to newest
     messages.reverse()
     return render_template('messages.html', messages=messages)
