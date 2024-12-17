@@ -26,6 +26,14 @@ import urllib3
 import base64
 import subprocess
 from x32_app.x32_channel import x32_bp, periodic_check
+from flask import session
+from functools import wraps
+
+
+
+# Store login credentials on the server (for demo only; consider environment variables or a separate config file)
+VALID_USERNAME = "hector"
+VALID_PASSWORD = "hector"
 
 http = urllib3.PoolManager()
 
@@ -33,6 +41,9 @@ http = urllib3.PoolManager()
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')
 app.register_blueprint(x32_bp, url_prefix='/x32')
+
+# Set a secret key for session:
+app.secret_key = "yoursecretkey"  # Change this to a secure value in production.
 
 # Set up the dispatcher to handle specific OSC addresses
 dispatcher = Dispatcher()
@@ -120,7 +131,13 @@ class CameraStream:
                 logging.error(f"Error fetching frames from camera {self.ip_address}: {e}")
                 time.sleep(2)  # Slight delay before retrying
 
-
+    def login_required(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'logged_in' not in session or not session['logged_in']:
+                return render_template("login.html")  # or return a redirect if preferred
+            return f(*args, **kwargs)
+        return decorated_function
 
 
     def get_frame(self):
@@ -468,15 +485,41 @@ def save_cameras(cameras):
         with open(CAMERAS_FILE, 'w') as f:
             json.dump(cameras, f, indent=4)
 
+@app.route('/is_logged_in')
+def is_logged_in():
+    return jsonify({'logged_in': session.get('logged_in', False)})
+
 
 @app.route('/')
 def index():
+    # If not logged in, show just a placeholder or login page:
+    if 'logged_in' not in session or not session['logged_in']:
+        return render_template('login.html')
+
+    # If logged in, proceed as normal
     scenes = load_scenes()
     if scenes['lastScene']:
         last_scene_number = scenes['lastScene']
     else:
         last_scene_number = None
     return render_template('index.html', last_scene_number=last_scene_number)
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if username == VALID_USERNAME and password == VALID_PASSWORD:
+        session['logged_in'] = True
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'status': 'fail'}), 401
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'logged_out'})
 
 
 @app.route('/add_camera', methods=['POST'])
