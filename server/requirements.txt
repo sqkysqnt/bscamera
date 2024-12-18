@@ -1,0 +1,10 @@
+opencv-python
+eventlet
+filelock
+flask
+flask_socketio
+netifaces
+numpy
+python-osc
+requests
+urllib3
