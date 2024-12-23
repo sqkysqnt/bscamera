@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X32 Configuration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='combined.css') }}">
+    <style>
+        body {
+            overflow-y: auto !important;
+        }
+    </style>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+        }
+        input[type=text], input[type=number] {
+            padding: 10px;
+            margin: 10px 0;
+            width: 100%;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+        }
+        input[type=submit], button {
+            padding: 10px 20px;
+            margin-bottom: 40px;
+            margin-top: 15px;
+            background-color: #2c2c2c;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        input[type=submit]:hover, button:hover {
+            background-color: #3c3c3c;
+        }
+        .target-list {
+            margin-top: 20px;
+        }
+        .target-item {
+            background-color: #333;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .target-item button {
+            float: right;
+            background-color: #2c2c2c;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .target-item button:hover {
+            background-color: #3c3c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Get channel status from X32 and send OSC</h1>
+
+        <h2>Update X32 IP Address</h2>
+        <form id="x32Form">
+            <label for="x32_ip">X32 Mixer IP:</label>
+            <input type="text" id="x32_ip" name="x32_ip" value="{{ config['x32_ip'] }}">
+            <input type="submit" value="Update X32 IP">
+            <h2>Enable/Disable Periodic Check</h2>
+            <p>Current State: <span id="currentState">{{ 'Enabled' if config['enabled'] else 'Disabled' }}</span></p>
+            <button id="toggleButton">Toggle Periodic Check</button>
+        </form>
+
+        <h2>Add Channel Target</h2>
+        <form id="targetForm">
+            <label for="channel">Channel:</label>
+            <input type="number" id="channel" name="channel">
+            <label for="target_ip">Target IP:</label>
+            <input type="text" id="target_ip" name="target_ip">
+            <label for="target_port">Target Port:</label>
+            <input type="number" id="target_port" name="target_port">
+                <!-- Add the Auto Pan checkbox -->
+            <label for="auto_pan">Auto Pan:</label>
+            <input type="checkbox" id="auto_pan" name="auto_pan"><br>
+            <input type="submit" value="Add Target">
+            
+        </form>
+
+        <h2>Current Channel Targets</h2>
+        <div id="channelTargets" class="target-list"></div>
+
+        <h2>Update OSC Messages</h2>
+        <form id="oscForm">
+            <label for="mic_ready">/micReady Message:</label>
+            <input type="text" id="mic_ready" name="mic_ready" value="{{ config['osc_messages']['mic_ready'] }}">
+            <label for="mic_on">/micOn Message:</label>
+            <input type="text" id="mic_on" name="mic_on" value="{{ config['osc_messages']['mic_on'] }}">
+            <label for="mic_off">/micOff Message:</label>
+            <input type="text" id="mic_off" name="mic_off" value="{{ config['osc_messages']['mic_off'] }}">
+            <input type="submit" value="Update OSC Messages">
+        </form>
+
+        <h2>Send Test Message</h2>
+        <form id="testForm">
+            <label for="channel">Channel:</label>
+            <input type="number" id="test_channel" name="channel">
+            <label for="message_type">Message Type:</label>
+            <select id="message_type" name="message_type">
+                <option value="mic_ready">/micReady</option>
+                <option value="mic_on">/micOn</option>
+                <option value="mic_off">/micOff</option>
+            </select>
+            <input type="submit" value="Send Test Message">
+        </form>
+    </div>
+
+    <script>
+        // Load current targets on page load
+        function loadTargets() {
+            fetch('/x32/get_channel_targets')
+                .then(response => response.json())
+                .then(data => {
+                    const targetList = document.getElementById('channelTargets');
+                    targetList.innerHTML = ''; // Clear the list
+                    for (const [channel, targets] of Object.entries(data)) {
+                        targets.forEach(target => {
+                            const targetItem = document.createElement('div');
+                            targetItem.classList.add('target-item');
+                            targetItem.innerHTML = `Channel: ${channel}, IP: ${target.ip}, Port: ${target.port}
+                                <button onclick="removeTarget(${channel}, '${target.ip}', ${target.port})">Remove</button>`;
+                            targetList.appendChild(targetItem);
+                        });
+                    }
+                });
+        }
+
+        // Remove a target
+        function removeTarget(channel, target_ip, target_port) {
+            const formData = new FormData();
+            formData.append('channel', channel);
+            formData.append('target_ip', target_ip);
+            formData.append('target_port', target_port);
+
+            fetch('/x32/remove_channel_target', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                loadTargets();  // Reload the targets list
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', loadTargets); // Load targets on page load
+
+        // Handle form submissions
+        document.getElementById('x32Form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/x32/update_x32_ip', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => {
+                alert(data.message);
+            });
+        });
+
+        document.getElementById('targetForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/x32/add_channel_target', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => {
+                alert(data.message);
+                loadTargets();  // Reload the targets list
+            });
+        });
+
+        document.getElementById('oscForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/x32/update_osc_messages', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => {
+                alert(data.message);
+            });
+        });
+
+        document.getElementById('testForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('/x32/send_test_message', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => {
+                alert(data.message);
+            });
+        });
+
+        document.getElementById('toggleButton').addEventListener('click', function() {
+            fetch('/x32/toggle_enabled', {
+                method: 'POST'
+            }).then(response => response.json()).then(data => {
+                alert(data.message);
+                // Optionally update the display text
+                document.getElementById('currentState').textContent = data.message.includes('enabled') ? 'Enabled' : 'Disabled';
+            });
+        });
+    </script>
+</body>
+</html>
