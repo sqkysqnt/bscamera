@@ -19,6 +19,8 @@ import socket
 import re
 import netifaces
 import time
+import uuid
+from werkzeug.utils import secure_filename
 import numpy as np
 from datetime import datetime, timedelta
 import atexit
@@ -66,6 +68,9 @@ CAMERAS_FILE = 'cameras.json'
 LOCK_FILE = 'cameras.lock'
 SCENES_FILE = 'scenes.json'
 OSC_PORT = 27900
+
+UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 last_loaded_scene = None  # Global variable to track last loaded scene
 
@@ -928,6 +933,24 @@ def update_camera_visibility():
     save_current_scene_cameras(cameras)
     return '', 204
 
+
+@app.route('/upload_image', methods=['POST'])
+def upload_image():
+    global UPLOAD_FOLDER
+
+    if 'image' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    unique_name = str(uuid.uuid4()) + "_" + secure_filename(file.filename)
+    save_path = os.path.join(UPLOAD_FOLDER, unique_name)
+    file.save(save_path)
+
+    file_url = url_for('static', filename=f'uploads/{unique_name}', _external=True)
+    return jsonify({"imageUrl": file_url})
 
 
 last_loaded_scene = None  # Global variable to track the last loaded scene
