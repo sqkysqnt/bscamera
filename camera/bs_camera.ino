@@ -1317,9 +1317,6 @@ if (!res) {
     OscWiFi.subscribe(oscPort, "/micOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleMicOn); });
     OscWiFi.subscribe(oscPort, "/micOff", [](OscMessage &msg) { captureMessageAndProcess(msg, handleMicOff); });
     OscWiFi.subscribe(oscPort, "/micReady", [](OscMessage &msg) { captureMessageAndProcess(msg, handleMicReady); });
-    OscWiFi.subscribe(oscPort, "/standby", [](OscMessage &msg) { captureMessageAndProcess(msg, handleStandby); });
-    OscWiFi.subscribe(oscPort, "/go", [](OscMessage &msg) { captureMessageAndProcess(msg, handleGo); });
-    OscWiFi.subscribe(oscPort, "/warning", [](OscMessage &msg) { captureMessageAndProcess(msg, handleWarning); });
     OscWiFi.subscribe(oscPort, "/display", [](OscMessage &msg) { captureMessageAndProcess(msg, handleDisplay); });
     OscWiFi.subscribe(oscPort, "/clear", [](OscMessage &msg) { captureMessageAndProcess(msg, handleClear); });
     OscWiFi.subscribe(oscPort, "/ledOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOnFromOSC); });
