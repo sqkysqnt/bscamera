@@ -7,7 +7,8 @@ import netifaces
 import os
 import threading
 import uuid
-from flask import render_template
+from werkzeug.utils import secure_filename
+from flask import render_template,Flask,request,jsonify, url_for
 
 # No imports from app.py to avoid circular dependencies
 
@@ -20,6 +21,7 @@ DEFAULT_CHANNEL = "cameras"
 SCENES_FILE = 'scenes.json'
 BROADCAST_IP = None
 osc_client = None
+UPLOAD_FOLDER = None
 
 # Global variables for pending commands
 pending_commands = {}
@@ -34,6 +36,10 @@ def init_theatrechat(app, sockio, disp, osc_port, num_cameras_func):
     dispatcher = disp
     OSC_PORT = osc_port
     get_num_cameras = num_cameras_func  # Assign the function
+    global UPLOAD_FOLDER  # Make it modifiable in this function
+        # Now define the upload folder *after* app exists
+    UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
     BROADCAST_IP = get_broadcast_ip()
     print(f"BROADCAST_IP = {BROADCAST_IP}")
@@ -62,6 +68,13 @@ def register_socketio_handlers():
 
         if not message:
             return
+        
+        # Preprocess image messages
+        if '<img' in message:
+            message = message.replace(
+                '<img ',
+                '<img style="max-height: 240px; width: auto; cursor: pointer;" onclick="window.open(this.src, \'_blank\')" '
+            )
 
         if channel == "cameras":
             # Cameras channel requires target and command
@@ -172,7 +185,8 @@ def get_broadcast_ip():
 
 
 def init_db():
-    conn = sqlite3.connect('messages.db')
+    conn = sqlite3.connect('messages.db', timeout=10.0)
+    conn.execute('PRAGMA journal_mode = WAL;')
     cursor = conn.cursor()
 
     # Check if the 'messages' table exists
@@ -317,6 +331,7 @@ def send_osc_message_chat(message, channel, sender):
 
     except Exception as e:
         logging.error(f"Failed to send OSC message: {e}")
+
 
 
 def messages_page():
