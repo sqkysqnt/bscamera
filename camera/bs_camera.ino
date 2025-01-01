@@ -19,6 +19,8 @@
 #include <Adafruit_NeoPixel.h>
 #include "httpupdate.h"
 #include <vector>
+#include <nvs_flash.h>
+#include <ArduinoOTA.h>
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -38,7 +40,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R2, U8X8_PIN_NONE);
 
 int frameRate = 30;  // Default frame rate of 30 FPS
 int currentScreen = 0;
-
+String screenState= "Boot";
 bool isStreaming = false;
 
 volatile unsigned long lastDebounceTime = 0;  // Timestamp of the last valid button press
@@ -49,8 +51,10 @@ bool oscReceiveEnabled = false;
 int oscPort = 8000;
 
 String firmwareUrl = "";
-String currentVersion = "1.0.0";
+String currentVersion = "1.1.1";
 
+bool confirmDHCPRenewal = false;
+bool confirmFactoryReset = false;
 
 // TheatreChat OSC Configuration
 bool theatreChatEnabled = true;
@@ -63,12 +67,14 @@ String theatreChatMessage = "default message";
 int deviceOrientation = 0;
 bool backstageMode = false;
 bool debugMode = true;    // Variable to track debug mode
+bool chargingActive = false;          // Indicates we’re showing charging mode
+bool chargingScreenDisplayed = false; // Helps prevent re-displaying “Charging” over and over
 
 // Sound Detection Parameters
 int SOUND_THRESHOLD = 6000; // Adjust based on testing
 unsigned long SOUND_DEBOUNCE_DELAY = 500; // .5 seconds debounce
 unsigned long PIR_DEBOUNCE_DELAY = 5000; // 5 seconds debounce
-bool PIRDetectionToggle = true;
+bool PIRDetectionToggle = false;
 bool soundDetectionToggle = true;
 bool soundDebounceDebug = false;
 bool pirFlag = false;
@@ -81,6 +87,10 @@ int16_t *vad_buff;
 // IR Settings variables
 bool irEnabled = false;
 int irBrightness = 50;
+
+TaskHandle_t otaTaskHandle = NULL;  // NULL if not running
+bool otaActive = false;
+bool otaModeState = false;
 
 // LED state and colors
 String micOnColor = "#00FF00";   // Default green
@@ -111,9 +121,18 @@ int cameraWbMode = 0; // Range: 0 to 4
 
 int batteryPercent = -1;  // Global variable to store battery percentage
 bool batteryConnected = false;  // Global variable to store battery connection status
+bool chargingDismissed = false; 
 
 unsigned long lastExecutionTime = 0; // Keeps track of the last execution time
 const unsigned long interval = 33;   // 33 milliseconds for 30 executions per second
+
+String getDefaultHostname() {
+    String mac = WiFi.macAddress();  // Get full MAC address (format: "XX:XX:XX:XX:XX:XX")
+    String lastFour = mac.substring(mac.length() - 5);  // Extract last 5 characters
+    lastFour.replace(":", "");  // Remove colons
+    return "BSCam" + lastFour;
+}
+
 
 int screenPress = 1;
 
@@ -150,6 +169,13 @@ void userButtonISR() {
 unsigned long loopMillis = 0;  // Initialize it globally
 
 void handlePMUButtonPress() {
+    if (chargingActive) {
+        chargingActive    = false;
+        chargingDismissed = true;  // So we won't re-enter until next USB removal
+        chargingClear();
+        logSerial("User dismissed charging screen.");
+        // return; // Optionally bail out of the rest
+    }
     screenPress++;  // Cycle through menu items
     if (screenPress > 20) {  // Assuming you have 6 screens
         screenPress = 1;  // Loop back to the first menu item
@@ -159,6 +185,13 @@ void handlePMUButtonPress() {
 
 // Button press handler to cycle screens
 void handleButtonPress() {
+    if (chargingActive) {
+        chargingActive    = false;
+        chargingDismissed = true;  // So we won't re-enter until next USB removal
+        chargingClear();
+        logSerial("User dismissed charging screen.");
+        // return; // Optionally bail out of the rest
+    }
     screenPress++;
     if (screenPress > 20) {
         screenPress = 1;
@@ -170,21 +203,21 @@ void handleScreenSwitch() {
     switch (screenPress) {
         case 1:
             //displayScreen("Main Screen", true);  // Save the screen buffer for screen 1
-            displayScreen(theatreChatName);
+            displayScreen("1)" + theatreChatName);
             break;
         case 2:
-            displayScreen("IP: " + WiFi.localIP().toString());
+            displayScreen("2) IP: " + WiFi.localIP().toString());
             break;
         case 3:
-            if (batteryPercent = -1){
-              displayScreen("Battery Not Connected");
+            if (batteryPercent == -1){
+              displayScreen("3) Battery Not Connected");
             } else {
-              displayScreen("Battery: " + String(batteryPercent) + "%");
+              displayScreen("3) Battery: " + String(batteryPercent) + "%");
             }
             
             break;
         case 4:
-            displayScreen("Amplitude:");
+            displayScreen("4) Amplitude:");
             soundDebounceDebug = true;
             break;
         case 5:
@@ -192,67 +225,82 @@ void handleScreenSwitch() {
             //turn IR on or off using the other button            
             //handleUserButtonPress();
             if(irEnabled) {
-              displayScreen("IR On");
+              displayScreen("5) IR On");
             } else {
-              displayScreen("IR Off");
+              displayScreen("5) IR Off");
             }
             break;    
         case 6:
             //handleUserButtonPress();
             if(theatreChatEnabled) {
-              displayScreen("OSC Send On");
+              displayScreen("6) OSC Send On");
             } else {
-              displayScreen("OSC Send Off");
+              displayScreen("6) OSC Send Off");
             }
             break;            
         case 7:
             //handleUserButtonPress();
             if (oscReceiveEnabled) {
-                displayScreen("OSC Receive On");  // Update screen to show "IR On"
+                displayScreen("7) OSC Receive On");  // Update screen to show "IR On"
             } else {
-                displayScreen("OSC Receive Off");  // Update screen to show "IR Off"
+                displayScreen("7) OSC Receive Off");  // Update screen to show "IR Off"
             }
 
             break;  
         case 8:
             //handleUserButtonPress();
             if (ledState) {
-                displayScreen("LEDs On");  // Update screen to show "IR On"
+                displayScreen("8) LEDs On");  // Update screen to show "IR On"
             } else {
-                displayScreen("LEDs Off");  // Update screen to show "IR Off"
+                displayScreen("8) LEDs Off");  // Update screen to show "IR Off"
             }
             break;  
         case 9:
-            displayScreen("Check for update?");
+            displayScreen("9) Check for update?");
             break;  
         case 10:
-            displayScreen("Current Firmware: " + currentVersion);
+            displayScreen("10) Current Firmware: " + currentVersion);
             break;
         case 11:
             if (soundDetectionToggle) {
-                displayScreen("Sound Detection On");
+                displayScreen("11) Sound Detection On");
             } else {
-                displayScreen("Sound Detection Off");
+                displayScreen("11) Sound Detection Off");
             }
             break;
         case 12:
             if (PIRDetectionToggle) {
-                displayScreen("Motion Detection On");
+                displayScreen("12) Motion Detection On");
             } else {
-                displayScreen("Motion Detection Off");
+                displayScreen("12) Motion Detection Off");
             }
             break;
         case 13:
-
+            if (WiFi.status() == WL_CONNECTED) {
+                displayScreen("13) SSID: " + WiFi.SSID());
+            } else {
+                displayScreen("13) Not connected to WiFi");
+            }
             break;   
         case 14:
-
+            if (WiFi.status() == WL_CONNECTED) {
+                displayScreen("14) Renew DHCP?");
+                confirmDHCPRenewal = true; // Set confirmation state
+            } else {
+                displayScreen("14) Not connected to WiFi");
+                confirmDHCPRenewal = false; // No action needed if not connected
+            }
             break;                                               
         case 15:
-
+            displayScreen("15) Reset to factory?");
+            confirmFactoryReset = true; // Set confirmation state
             break;  
         case 16:
-
+            if (otaModeState) {
+                displayScreen("16) OTA On");
+            } else {
+                displayScreen("16) OTA Off");
+            }
             break;  
         case 17:
 
@@ -266,6 +314,7 @@ void handleScreenSwitch() {
         case 20:
             u8g2.clearBuffer();
             u8g2.sendBuffer();
+            screenState = "Manually cleared";
             break;                                               
         default:
             screenPress = 1;  // Loop back to screen 1
@@ -321,13 +370,28 @@ void handleUserButtonPress() {
 
             break;   
         case 14:
-
+            if (confirmDHCPRenewal) {
+                logSerial("Renewing DHCP...");
+                WiFi.disconnect();
+                delay(100); // Small delay to ensure disconnect
+                WiFi.reconnect();
+                logSerial("DHCP Renewed");
+                displayScreen("DHCP Renewed");
+                confirmDHCPRenewal = false; // Reset the state
+            } else {
+                logSerial("No action, waiting for confirmation.");
+            }
             break;                                               
         case 15:
-
+            if (confirmFactoryReset) {
+                resetToFactoryDefaults(); // Call the function to reset settings
+                confirmFactoryReset = false; // Reset the confirmation state
+            } else {
+                logSerial("No action, waiting for confirmation.");
+            }
             break;  
         case 16:
-
+            handleOTAModeToggle();
             break;  
         case 17:
 
@@ -347,6 +411,129 @@ void handleUserButtonPress() {
 }
 
 
+
+
+
+void startOtaUpdateMode(const char* hostname = nullptr, const char* otaPassword = "hector1995") {
+    // 1. Configure ArduinoOTA
+    String defaultHostname = getDefaultHostname();  // Get "BSCam[last 4]"
+    if (!hostname) {
+        hostname = defaultHostname.c_str();  // Use default if no hostname provided
+    }
+
+    ArduinoOTA.setHostname(hostname);
+    if (otaPassword != nullptr) {
+      ArduinoOTA.setPassword(otaPassword);
+    }
+
+    // Optional callbacks
+    ArduinoOTA.onStart([]() {
+      Serial.println("OTA Start");
+    });
+    ArduinoOTA.onEnd([]() {
+      Serial.println("OTA End");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("OTA Progress: %u%%\r\n", (progress * 100U) / total);
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+      Serial.printf("OTA Error[%u]: ", error);
+      if      (error == OTA_AUTH_ERROR)    Serial.println("Auth Failed");
+      else if (error == OTA_BEGIN_ERROR)   Serial.println("Begin Failed");
+      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+      else if (error == OTA_END_ERROR)     Serial.println("End Failed");
+    });
+
+    // 2. Begin ArduinoOTA
+    ArduinoOTA.begin();
+    otaActive = true;
+    Serial.println("OTA Mode Enabled. Ready for remote upload.");
+
+    // 3. Create a FreeRTOS task that calls ArduinoOTA.handle() repeatedly
+    if (otaTaskHandle == NULL) {
+      xTaskCreatePinnedToCore(
+        otaTask,            // Task function
+        "OtaTask",          // Name
+        4096,               // Stack size
+        NULL,               // Parameter
+        1,                  // Priority
+        &otaTaskHandle,     // Task handle
+        1                   // Core (optional; set to 0 or 1 on dual-core)
+      );
+    }
+}
+
+void otaTask(void* parameter) {
+    while (otaActive) {
+        ArduinoOTA.handle();
+        vTaskDelay(pdMS_TO_TICKS(10));  // 10ms delay to avoid hogging CPU
+    }
+    Serial.println("Exiting OTA Task...");
+    vTaskDelete(NULL);  // Delete this task once otaActive is false
+}
+
+void stopOtaUpdateMode() {
+    if (!otaActive) {
+      return; // Already stopped
+    }
+    // 1. Indicate we’re no longer active
+    otaActive = false;
+
+    // 2. End ArduinoOTA so it won’t accept new connections
+    ArduinoOTA.end();
+
+    // 3. Let the task exit gracefully
+    //    The task will see otaActive==false, break out of its loop, and call vTaskDelete(NULL).
+    //    If you want to forcibly delete, do:
+    //      if (otaTaskHandle) vTaskDelete(otaTaskHandle);
+    //      otaTaskHandle = NULL;
+
+    Serial.println("OTA Mode Disabled.");
+}
+
+void handleOTAModeToggle() {
+    otaModeState = !otaModeState; 
+
+    if (otaModeState) {
+        logSerial("OTA On");
+        displayScreen("OTA On"); 
+        startOtaUpdateMode();
+    } else {
+        logSerial("OTA Off");
+        displayScreen("OTA Off");
+        stopOtaUpdateMode();
+    }
+
+    saveSettings();  // Save the state (if needed)
+}
+
+
+void resetToFactoryDefaults() {
+    logSerial("Resetting to factory defaults...");
+
+    // Clear NVS partition
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_OK || err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase(); // Erase entire NVS flash partition
+        nvs_flash_init();  // Reinitialize NVS
+        logSerial("NVS partition erased");
+    } else {
+        logSerial("Failed to initialize NVS");
+    }
+
+    // Optionally erase Wi-Fi credentials
+    WiFi.disconnect(true);
+    logSerial("Wi-Fi credentials cleared");
+
+    // Reset other states or variables here
+
+    logSerial("Factory reset complete. Restarting...");
+    displayScreen("Factory reset done");
+    delay(2000);
+    ESP.restart();
+}
+
 void toggleIr() {
     irEnabled = !irEnabled;  // Toggle the current IR state
 
@@ -361,6 +548,14 @@ void toggleIr() {
     }
 
     saveSettings();  // Save the state (if needed)
+}
+
+void chargingClear(){
+    u8g2.clearBuffer();
+    u8g2.sendBuffer();
+    if (ledState) {
+      currentMode = LED_OFF;
+    }
 }
 
 void togglesoundDetectionToggle() {
@@ -683,10 +878,10 @@ void receiveTheatreChatOscMessage(OscMessage &msg) {
 
     // Check if the target matches theatreChatName or "all" (case-insensitive)
     if (targetLower == nameLower || targetLower == "all") {
-        logSerial("Target matches theatreChatName. Processing command: " + command);
-
+        logSerial("Target matches theatreChatName. Processing command: " + command); 
         // Placeholder for command processing
         processCommand(command);
+        sendTheatreChatOscMessage("reply" + messageToAnalyze);
     } else {
         logSerial("Target does not match theatreChatName. Ignoring command.");
     }
@@ -709,6 +904,12 @@ void processCommand(String command) {
         handleWarning();
     } else if (command == "clear") {
         handleClear();
+    } else if (command == "ip") {
+        handleDisplayIP();
+    } else if (command == "name") {
+        handleDisplayName();     
+    } else if (command == "identify") {
+        handleDisplayName();                      
     } else if (command.startsWith("ledOn ")) {
         String ledColor = command.substring(6);  // Extract everything after "ledOn "
         handleLedOn(ledColor);
@@ -1102,6 +1303,13 @@ if (!res) {
     String ip = WiFi.localIP().toString(); // Get IP for STA mode
     logSerial("IP Address: " + ip);
     displayScreen("IP: " + ip);
+
+    if (!preferences.getBool("didRebootOnce", false)) {
+      logSerial("First successful WiFi connection -> rebooting device once...");
+      preferences.putBool("didRebootOnce", true);  // Remember we have already rebooted
+      delay(1000);                                 // Short delay so messages get printed
+      ESP.restart();                               // Reboot once
+    }
 }
 
 
@@ -1320,6 +1528,15 @@ if (!fb) {
         handlePIRDetectionToggle(request);
     });
 
+    server.on("/getFirmwareVersion", HTTP_GET, [](AsyncWebServerRequest *request){
+        handleGetFirmwareVersion(request);
+    });
+
+    server.on("/firmwareUpdate", HTTP_POST, [](AsyncWebServerRequest *request){
+        handleFirmwareUpdate(request);
+    });
+
+
 
     
 
@@ -1521,15 +1738,23 @@ void loop() {
 
     if (pmu_flag) {
         pmu_flag = false;
-
-        // Get PMU Interrupt Status Register
         uint32_t status = PMU.getIrqStatus();
 
         if (PMU.isVbusInsertIrq()) {
             Serial.println("isVbusInsert");
+            if (!chargingActive) {
+                chargingActive = true;
+                chargingScreenDisplayed = false; 
+            }
         }
         if (PMU.isVbusRemoveIrq()) {
             Serial.println("isVbusRemove");
+            // Exit charging mode automatically
+            if (chargingActive) {
+                chargingActive = false;
+                chargingScreenDisplayed = false;
+            }
+            chargingClear();
         }
         if (PMU.isBatInsertIrq()) {
             Serial.println("isBatInsert");
@@ -1556,6 +1781,26 @@ void loop() {
         } else {
             batteryConnected = false;
             batteryPercent = -1;  // Set to an invalid value if not connected
+        }
+
+        // Show if USB power is present
+        bool usbPower = PMU.isVbusIn();
+        if (usbPower) {
+            // Only set chargingActive if we haven't dismissed it
+            if (!chargingDismissed && !chargingActive) {
+                chargingActive = true; 
+                chargingScreenDisplayed = false; 
+                logSerial("USB plugged in; starting charging display.");
+            }
+        } else {
+            // If USB power is gone, allow charging to be shown next time:
+            if (chargingActive) {
+                chargingActive = false;
+                chargingScreenDisplayed = false;
+                chargingClear();
+            }
+            chargingDismissed = false; // So next time we actually see it again
+            logSerial("USB unplugged; cleared charging state.");
         }
         loopMillis = millis();
     }
@@ -1591,7 +1836,7 @@ void loop() {
   if (updatePrompt && countingForUpdate) {
     handleUpdateButton();
   }
-
+    
     if (WiFi.status() != WL_CONNECTED) {
         logSerial("WiFi disconnected!");
     } else {
@@ -1606,6 +1851,25 @@ void loop() {
         isStreaming = false;
     }
     
+    if (chargingActive) {
+        // Redraw “Charging” once a second, or however often you like
+        static unsigned long lastChargeRefresh = 0;
+        if (millis() - lastChargeRefresh > 1000) { 
+            lastChargeRefresh = millis();
+
+            // For a fresh screen, or to keep updating
+            u8g2.clearBuffer();
+            if (batteryConnected && batteryPercent >= 0) {
+                displayScreen("Charging: " + String(batteryPercent) + "%");
+            } else {
+                displayScreen("Charging...");
+            }
+        }
+
+        // Keep running other code; do NOT "return;"
+    }
+
+
     
     delay(1); // Small delay to prevent WDT resets
     }
