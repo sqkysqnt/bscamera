@@ -10,6 +10,7 @@ extern String micOffColor;
 extern String micReadyColor;
 extern bool ledState;
 extern int ledBrightness;
+extern String theatreChatName;
 
 // Declare the global variable for the current OSC message
 OscMessage currentOscMessage("/dummy");  // Initialize with a dummy address
@@ -194,21 +195,6 @@ void handleMicReady() {
 
 }
 
-void handleStandby() {
-    logSerial("OSC: Standby");
-    displayScreen("Standby");
-}
-
-void handleGo() {
-    logSerial("OSC: Go");
-    displayScreen("Go");
-}
-
-void handleWarning() {
-    logSerial("OSC: Warning");
-    displayScreen("Warning");
-}
-
 void handleClear() {
     logSerial("OSC: Clear");
     u8g2.clearBuffer();
@@ -274,6 +260,16 @@ void handleDisplay() {
     String displayText = currentOscMessage.arg<String>(0);  // Get the first argument as a string
     logSerial("OSC: Display - " + displayText);
     displayScreen(displayText);
+}
+
+void handleDisplayIP() {
+    displayScreen("IP: " + WiFi.localIP().toString());
+    logSerial("OSC: Display - IP");
+}
+
+void handleDisplayName() {
+    displayScreen(theatreChatName);
+    logSerial("OSC: Display - Name");
 }
 
 // Call this function inside your OSC callbacks to capture the message
