@@ -17,6 +17,11 @@ extern void handleScreenSwitch();
 extern String firmwareUrl; 
 extern String currentVersion;
 
+// Forward declarations from your code
+extern String currentVersion;          // Already declared/defined in bscamera.ino
+extern void performOTAUpdate(const char* firmwareUrl);  // Defined in httpupdate.h
+
+
 extern int screenPress;
 extern void handleUserButtonPress();
 
@@ -246,6 +251,35 @@ void performOTAUpdate(const char* firmwareUrl) {
   http.end();  // End HTTP connection
 }
 
+void handleGetFirmwareVersion(AsyncWebServerRequest *request) {
+    // Simply respond with the current firmware version
+    // e.g., "1.1.0"
+    request->send(200, "text/plain", currentVersion);
+}
+
+void handleFirmwareUpdate(AsyncWebServerRequest *request) {
+    // Expecting a POST param named "firmwareUrl"
+    if (!request->hasParam("firmwareUrl", true)) {
+        request->send(400, "text/plain", "Missing 'firmwareUrl' POST parameter");
+        return;
+    }
+
+    // Get the URL from the request
+    String newFirmwareUrl = request->getParam("firmwareUrl", true)->value();
+    logSerial("Firmware update requested. URL: " + newFirmwareUrl);
+
+    // Optionally display on OLED or debug
+    displayScreen("Starting OTA update...");
+
+    // Immediately respond to the client so it won’t hang
+    request->send(200, "text/plain", 
+      "Attempting OTA from: " + newFirmwareUrl + "\nDevice will reboot if successful."
+    );
+
+    // Call your OTA function (defined in httpupdate.h)
+    // It will handle downloading, flashing, and then reboot.
+    performOTAUpdate(newFirmwareUrl.c_str());
+}
 
 
 #endif
