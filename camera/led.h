@@ -106,13 +106,13 @@ void smoothPulsate(uint32_t colorVariable, int numLeds, int delayTime = 10) {
 
         // Update brightness value
         if (increasing) {
-            brightness += 5;  // Increase brightness
+            brightness += 1;  // Increase brightness
             if (brightness >= ledBrightness) {  // Cap the brightness to ledBrightness
                 brightness = ledBrightness;
                 increasing = false;  // Switch to decreasing brightness
             }
         } else {
-            brightness -= 5;  // Decrease brightness
+            brightness -= 1;  // Decrease brightness
             if (brightness <= 0) {
                 brightness = 0;
                 increasing = true;  // Switch to increasing brightness
