@@ -884,6 +884,7 @@ void handleSetLedBrightness(AsyncWebServerRequest *request) {
         return;
     } else {
       ledBrightness = request->getParam("ledBrightness", true)->value().toInt();
+      ledBrightness = constrain(ledBrightness, 0, 255);
       request->send(200, "text/plain", "LED Brightness set to: " + String(ledBrightness));
       saveSettings();
       logSerial("LED Brightness set to: " + String(ledBrightness));
