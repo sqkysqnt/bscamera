@@ -36,13 +36,15 @@
                      data-timestamp="{{ timestamp }}">
                     <span class="chat-timestamp">[{{ timestamp }}]</span>
                     <span class="chat-sender">{{ sender_name }}:</span>
-                    <span class="chat-text">{{ message }}</span>
+                    <span class="chat-text">{{ message|safe }}</span>
                 </div>
                 {% endfor %}
             </div>
 
             <div class="chat-input-container">
                 <input type="text" class="chat-input" id="message-input" placeholder="Type a message... (Press Enter to send)">
+                <input type="file" id="image-input" accept="image/*" capture="camera" style="display: none;">
+                <button class="image-button" id="upload-image-button"></button>
                 <div class="emoji-container">
                     <button class="emoji-button" id="emoji-button">😊</button>
                     <div class="emoji-menu" id="emoji-menu">
@@ -68,8 +70,33 @@
     </div>
 
     <script>
+        console.log("LOADED: This is my real messages.html version 12, time =", new Date());
+
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+                if (permission !== 'granted') {
+                    console.warn('Notifications are disabled by the user.');
+                }
+            });
+        }
+
         const socket = io();
-        let selectedChannel = 'cameras';
+        let selectedChannel = localStorage.getItem('selectedChannel') || 'cameras';
+
+            // Set the active channel button on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const channelButtons = document.querySelectorAll('.channel-button');
+            channelButtons.forEach((button) => {
+                const channel = button.getAttribute('data-channel');
+                if (channel === selectedChannel) {
+                    button.classList.add('active');
+                } else {
+                    button.classList.remove('active');
+                }
+            });
+
+            applyFilters(); // Update the chat view based on the selected channel
+        });
 
         // Large array of emojis (expand as desired)
         // Here’s a representative large subset of emojis:
@@ -141,6 +168,19 @@
 
             chatWindow.scrollTop = chatWindow.scrollHeight; 
             applyFilters();
+
+            if (Notification.permission === 'granted' && !isMe) {
+                const notification = new Notification(`New Message from ${data.sender_name}`, {
+                    body: data.message,
+                    icon: '/static/icons/message-icon.png',
+                    tag: data.id
+                });
+
+                notification.onclick = () => {
+                    window.focus(); // Bring the chat window to focus
+                };
+            }
+
         });
 
         function sendMessage() {
@@ -152,6 +192,7 @@
                     channel: selectedChannel,
                     username: chosenUsername
                 });
+                console.log("DEBUG: About to send image with channel=", selectedChannel);
                 messageInput.value = '';
             } else if (chosenUsername === '') {
                 alert("Please set a username before sending messages.");
@@ -184,6 +225,8 @@
                 channelButtons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 selectedChannel = button.getAttribute('data-channel');
+                // Save selected channel to localStorage
+                localStorage.setItem('selectedChannel', selectedChannel);
                 applyFilters();
             });
         });
@@ -255,7 +298,48 @@
             }
         });
 
+        const uploadImageButton = document.getElementById('upload-image-button');
+        const imageInput = document.getElementById('image-input');
 
+        // When user clicks the "Send Image" button, simulate clicking on the hidden file input
+        uploadImageButton.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        // When the file input changes (i.e. user picked an image), upload it
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files[0];
+            if (!file) return;
+
+            // Use FormData to send the file via fetch
+            const formData = new FormData();
+            formData.append('image', file);
+
+            fetch('/upload_image', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const imageUrl = data.imageUrl;
+                // Now send the image as a message via Socket.IO, 
+                // embedding it in an <img> tag:
+                const payload = {
+                    message: `<img src="${imageUrl}" alt="User Image">`,
+                    channel: selectedChannel, // (or selectedChannel if that’s the variable)
+                    username: chosenUsername
+                    };
+                console.log("SENDING to server:", payload);
+                socket.emit('send_message', payload);
+            })
+            .catch(err => {
+                console.error('Error uploading image', err);
+            })
+            .finally(() => {
+                // Reset file input so user can pick again
+                imageInput.value = "";
+            });
+        });
 
 
     </script>
