@@ -19,15 +19,19 @@ import socket
 import re
 import netifaces
 import time
+import uuid
+from werkzeug.utils import secure_filename
 import numpy as np
 from datetime import datetime, timedelta
 import atexit
 import urllib3
 import base64
 import subprocess
-from x32_app.x32_channel import x32_bp, periodic_check
+#from x32_app.x32_channel import x32_bp, periodic_check
 from flask import session
 from functools import wraps
+import importlib
+from plugins.plugin_interface import PluginInterface
 
 
 
@@ -40,16 +44,19 @@ http = urllib3.PoolManager()
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')
-app.register_blueprint(x32_bp, url_prefix='/x32')
+#app.register_blueprint(x32_bp, url_prefix='/x32')
 
 # Set a secret key for session:
 app.secret_key = "yoursecretkey"  # Change this to a secure value in production.
 
+# Set the plugin directory
+PLUGIN_DIR = "plugins"
+
 # Set up the dispatcher to handle specific OSC addresses
 dispatcher = Dispatcher()
 
-check_thread = threading.Thread(target=periodic_check, daemon=True)
-check_thread.start()
+#check_thread = threading.Thread(target=periodic_check, daemon=True)
+#check_thread.start()
 
 camera_cache = {}  # Keyed by IP address
 CACHE_DURATION = 300  # 5 minutes
@@ -62,7 +69,12 @@ LOCK_FILE = 'cameras.lock'
 SCENES_FILE = 'scenes.json'
 OSC_PORT = 27900
 
+UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 last_loaded_scene = None  # Global variable to track last loaded scene
+
+loaded_plugins_info = []
 
 # Import the theatrechat module after initializing app, socketio, and dispatcher
 import theatrechat
@@ -385,6 +397,45 @@ osc_client = udp_client.SimpleUDPClient(BROADCAST_IP, OSC_PORT)
 osc_client._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 
+def load_plugins(app, socketio, dispatcher):
+    """
+    Dynamically load plugins from the plugins directory.
+    """
+    for plugin_name in os.listdir(PLUGIN_DIR):
+        plugin_path = os.path.join(PLUGIN_DIR, plugin_name)
+        if os.path.isdir(plugin_path) and "__init__.py" in os.listdir(plugin_path):
+            try:
+                # Import the plugin module
+                module = importlib.import_module(f"{PLUGIN_DIR}.{plugin_name}")
+                # Ensure the plugin implements the interface
+                if hasattr(module, "Plugin") and issubclass(module.Plugin, PluginInterface):
+                    plugin_instance = module.Plugin()
+                    
+                    # First, retrieve the plugin info:
+                    info = plugin_instance.get_plugin_info()
+                    
+                    # Check if "ignore" is True
+                    if info.get("ignore") is True:
+                        print(f"Skipping plugin {plugin_name} because ignore=True.")
+                        continue
+                    
+                    # Otherwise, go ahead and register it
+                    plugin_instance.register(app, socketio, dispatcher)
+                    
+                    # Add the plugin info to our loaded_plugins_info
+                    loaded_plugins_info.append(info)
+
+                    print(f"Loaded plugin: {plugin_name}")
+                else:
+                    print(f"Skipping invalid plugin: {plugin_name}")
+            except Exception as e:
+                print(f"Error loading plugin {plugin_name}: {e}")
+
+
+# Load plugins
+load_plugins(app, socketio, dispatcher)
+
+
 # Handler for loading a scene
 def osc_load_scene_handler(address, *args):
     logging.info(f"OSC message received at {address} with args: {args}")
@@ -414,6 +465,10 @@ def osc_load_scene_handler(address, *args):
     else:
         logging.error(f"Invalid OSC address: {address}. No scene number found.")
 
+@app.route('/get_plugins', methods=['GET'])
+def get_plugins():
+    # Return the dynamic list of plugin info
+    return jsonify({"plugins": loaded_plugins_info})
 
 
 def notify_frontend_scene_loaded():
@@ -879,6 +934,24 @@ def update_camera_visibility():
     return '', 204
 
 
+@app.route('/upload_image', methods=['POST'])
+def upload_image():
+    global UPLOAD_FOLDER
+
+    if 'image' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    unique_name = str(uuid.uuid4()) + "_" + secure_filename(file.filename)
+    save_path = os.path.join(UPLOAD_FOLDER, unique_name)
+    file.save(save_path)
+
+    file_url = url_for('static', filename=f'uploads/{unique_name}', _external=True)
+    return jsonify({"imageUrl": file_url})
+
 
 last_loaded_scene = None  # Global variable to track the last loaded scene
 
@@ -1021,7 +1094,7 @@ if __name__ == '__main__':
         # Start the OSC server using Eventlet's green thread
         socketio.start_background_task(start_osc_server)
     try:
-        socketio.run(app, host='0.0.0.0', port=5000)
+        socketio.run(app, host='0.0.0.0', port=15000)
     except KeyboardInterrupt:
         logging.info("Application interrupted by user. Shutting down...")
         cleanup()

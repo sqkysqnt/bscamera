@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>ESP32-CAM Stream</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='combined.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 </head>
 <body>
@@ -24,7 +24,9 @@
         <div class="camera-list">
             <form id="addCameraForm" action="/add_camera" method="post">
                 <input type="text" id="ipAddress" name="ip_address" placeholder="Enter Camera IP" required>
-                <button type="submit">Add Camera</button>
+                <div class="toolbar-buttons">
+                    <button type="submit">Add Camera</button>
+                </div>
             </form>
 
             <!-- Moved scene buttons here, directly under Add Camera -->
@@ -45,23 +47,24 @@
             </div>
 
             <!-- Added Messages button at the bottom where scene buttons previously were -->
-            <div class="x32-button-container">
-                <a href="/x32" class="x32-button" target="_blank">X32 Channel Config</a>
+            <div class="plugin-button-container">
+                <button id="plugin-button">Plugins</button>
             </div>
-            <div class="messages-button-container">
-                <a href="/messages" class="messages-button" target="_blank">Messages</a>
+            <div class="lock-button-container">
+                <a href="/messages" target="_blank"><img id="messagesIcon" src="/static/images/envelope.png" title="Messages" 
+                    style="cursor:pointer; display:inline-block; width:50px; height:30px;" /></a>                
+                <img id="lockIcon" src="/static/images/lock.png" title="Unlock Toolbar" 
+                     style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
+                <img id="unlockIcon" src="/static/images/unlock.png" title="Lock Toolbar" 
+                     style="cursor:pointer; display:none; width:30px; height:30px;" />
+                <img id="logoutIcon" src="/static/images/logout.png" title="Logout" 
+                     style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
             </div>
 
-            <div class="lock-button-container">
-                <img id="lockIcon" src="/static/images/lock.png" title="Unlock Toolbar" style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
-                <img id="unlockIcon" src="/static/images/unlock.png" title="Lock Toolbar" style="cursor:pointer; display:none; width:30px; height:30px;" />
-                <img id="logoutIcon" src="/static/images/logout.png" title="Logout" style="cursor:pointer; display:inline-block; width:30px; height:30px;" />
-            </div>
         </div>
     </div>
 
     <div id="sceneLabel" class="clickable-label"></div>
-    <!-- <div id="sceneLabel" style="position: absolute; top: 10px; right: 10px; color: white;"></div> -->
     <!-- Scene Selection Modal -->
     <div id="sceneSelectionModal" class="modal">
         <div class="modal-content">
@@ -73,59 +76,75 @@
         </div>
     </div>
 
+    <!-- Plugins Modal -->
+    <div id="pluginsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closePluginsModal">&times;</span>
+            <h2>Loaded Plugins</h2>
+            <ul id="pluginsList">
+                <!-- Plugin links will be dynamically inserted here -->
+            </ul>
+        </div>
+    </div>
+
     <!-- Container for camera streams -->
     <div id="cameraContainer" class="camera-container">
         <!-- MJPEG camera streams will be dynamically inserted here -->
     </div>
+
+    <!-- First JS block -->
     <script>
         const lastSceneNumber = {{ last_scene_number or 'null' }};
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Check if user is logged in via an endpoint that returns logged_in status
+            // 1) Check if user is logged in
             fetch('/is_logged_in')
                 .then(response => response.json())
                 .then(data => {
                     if (!data.logged_in) {
-                        // show login modal
+                        // Show login modal
                         document.getElementById('loginModal').style.display = 'block';
                     } else {
-                        // proceed with camera logic (fetchAndRenderCameras, etc.)
+                        // Already logged in, load cameras, etc.
                         fetchAndRenderCameras();
                         fetchAndRenderCameraList();
                         setupEventDelegation();
                         setupResizeFunctionality();
                     }
                 });
-                const logoutIcon = document.getElementById('logoutIcon');
-                logoutIcon.addEventListener('click', () => {
-                    fetch('/logout', {
-                        method: 'POST',
-                    })
+
+            // 2) Logout icon click
+            const logoutIcon = document.getElementById('logoutIcon');
+            logoutIcon.addEventListener('click', () => {
+                fetch('/logout', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'logged_out') {
-                            // Redirect to the main page, which should show the login modal again
+                            // Redirect to the main page
                             window.location.href = '/';
                         }
                     })
                     .catch(error => console.error('Error logging out:', error));
-                });
+            });
         });
 
+        // 3) Login button
         document.getElementById('loginSubmitBtn').addEventListener('click', function() {
             const username = document.getElementById('loginUsernameModal').value;
             const password = document.getElementById('loginPasswordModal').value;
+
             fetch('/login', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({username, password})
             })
             .then(response => {
-                if(response.ok) return response.json();
+                if (response.ok) return response.json();
                 else throw new Error('Login failed');
             })
             .then(data => {
-                if(data.status === 'success') {
+                if (data.status === 'success') {
+                    // Hide login modal
                     document.getElementById('loginModal').style.display = 'none';
                     // Now load the cameras
                     fetchAndRenderCameras();
@@ -141,7 +160,58 @@
             });
         });
     </script>
-    <!-- Include your JavaScript file -->
+
+    <!-- Include your main script -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <!-- Second JS block for plugins modal -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const pluginsButton = document.getElementById('plugin-button');
+            const pluginsModal = document.getElementById('pluginsModal');
+            const closePluginsModal = document.getElementById('closePluginsModal');
+            const pluginsList = document.getElementById('pluginsList');
+
+            // 1) Click "Plugins" button => fetch plugin list & show modal
+            pluginsButton.addEventListener('click', () => {
+                fetch('/get_plugins')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Clear old items
+                        pluginsList.innerHTML = '';
+
+                        data.plugins.forEach(plugin => {
+                            const li = document.createElement('li');
+                            const link = document.createElement('a');
+                            link.href = plugin.url;
+                            link.target = '_blank';
+                            link.textContent = plugin.name;
+
+                            // Built-in browser tooltip
+                            link.title = plugin.description;
+
+                            li.appendChild(link);
+                            pluginsList.appendChild(li);
+                        });
+
+                        // Show the modal
+                        pluginsModal.style.display = 'block';
+                    })
+                    .catch(error => console.error('Error fetching plugins:', error));
+            });
+
+            // 2) Close plugins modal (X button)
+            closePluginsModal.addEventListener('click', () => {
+                pluginsModal.style.display = 'none';
+            });
+
+            // 3) Close if user clicks outside the modal
+            window.addEventListener('click', (event) => {
+                if (event.target === pluginsModal) {
+                    pluginsModal.style.display = 'none';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
