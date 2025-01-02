@@ -148,11 +148,15 @@ function renderCamera(camera, index) {
     draggable.classList.add('draggable');
     draggable.id = `draggable_${index}`;
 
+    draggable.style.zIndex = camera.zIndex ?? 0;
+
     if (!camera.visible) draggable.style.display = 'none';
 
     // Set position and size
-    draggable.style.left = `${camera.position.left || (index % 3) * 350}px`;
-    draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
+    //draggable.style.left = `${camera.position.left || (index % 3) * 350}px`;
+    draggable.style.left = `${camera.position.left ?? 0}px`;
+    //draggable.style.top = `${camera.position.top || Math.floor(index / 3) * 300}px`;
+    draggable.style.top = `${camera.position.top ?? 0}px`;
     draggable.style.width = `${camera.size.width || 320}px`;
     draggable.style.height = `${camera.size.height || 240}px`;
 
@@ -191,12 +195,49 @@ function renderCamera(camera, index) {
     // Append label to the overlay
     //overlay.appendChild(label);
 
+    // Create a container just for the two layer buttons
+    const layerBtnContainer = document.createElement('div');
+    layerBtnContainer.classList.add('layer-button-container'); 
+    // This container will hold the ▲ and ▼ buttons side by side
+
+    // Create the bring-to-front and send-to-back buttons
+    const bringFrontBtn = document.createElement('button');
+    bringFrontBtn.textContent = '▲';
+    bringFrontBtn.title = 'Bring to front';
+    bringFrontBtn.classList.add('layer-button');
+
+    // ➜ ADD AN EVENT LISTENER to actually bring to front
+    bringFrontBtn.addEventListener('click', (event) => {
+        event.stopPropagation(); // Prevents triggering drag start
+        bringToFront(draggable);
+    });
+
+    const sendBackBtn = document.createElement('button');
+    sendBackBtn.textContent = '▼';
+    sendBackBtn.title = 'Send to back';
+    sendBackBtn.classList.add('layer-button');
+
+    // ➜ ADD AN EVENT LISTENER to actually send to back
+    sendBackBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        sendToBack(draggable);
+    });
+
+    // Append the buttons to the container
+    layerBtnContainer.appendChild(bringFrontBtn);
+    layerBtnContainer.appendChild(sendBackBtn);
+
+    // Append the container to the overlay (so both buttons appear in the overlay)
+    overlay.appendChild(layerBtnContainer);
+
     // Append the image, overlay to the draggable div
     draggable.appendChild(img);
     draggable.appendChild(overlay);
 
     // Append the draggable element to the camera container
     cameraContainer.appendChild(draggable);
+
+
 
     // Add a resize handle for resizing functionality
     const resizeHandle = document.createElement('div');
@@ -207,7 +248,83 @@ function renderCamera(camera, index) {
 }
 
 
+// Helper to find the highest zIndex among .draggable elements
+function getMaxZIndex() {
+    let maxZ = 0;
+    document.querySelectorAll('.draggable').forEach(elem => {
+        const z = parseInt(elem.style.zIndex) || 0;
+        if (z > maxZ) {
+            maxZ = z;
+        }
+    });
+    return maxZ;
+}
 
+// Bring a camera to the front
+function bringToFront(draggable) {
+    const maxZ = getMaxZIndex();
+    const newZ = maxZ + 1;
+    draggable.style.zIndex = newZ;
+
+    // We can also read the IP, position, size, then do updateCamera
+    const img = draggable.querySelector('img.camera-stream');
+    const ip = img.getAttribute('data-ip');
+
+    // Gather position, size
+    const position = {
+        left: parseInt(draggable.style.left, 10) || 0,
+        top: parseInt(draggable.style.top, 10) || 0
+    };
+    const size = {
+        width: draggable.offsetWidth,
+        height: draggable.offsetHeight
+    };
+
+    // Call the server
+    updateCameraWithZIndex(ip, position, size, newZ);
+}
+
+// Send a camera to the back
+function sendToBack(draggable) {
+    const newZ = 0;
+    draggable.style.zIndex = newZ;
+
+    // Similarly, read the IP, position, size
+    const img = draggable.querySelector('img.camera-stream');
+    const ip = img.getAttribute('data-ip');
+
+    const position = {
+        left: parseInt(draggable.style.left, 10) || 0,
+        top: parseInt(draggable.style.top, 10) || 0
+    };
+    const size = {
+        width: draggable.offsetWidth,
+        height: draggable.offsetHeight
+    };
+
+    updateCameraWithZIndex(ip, position, size, newZ);
+}
+
+function updateCameraWithZIndex(ip, position, size, zIndex) {
+    fetch('/update_camera', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ip: ip,
+            position: position,
+            size: size,
+            zIndex: zIndex   // <--- include in the body
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            console.error('Failed to update camera with zIndex');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating camera with zIndex:', error);
+    });
+}
 
 
 function startImageRefresh() {
@@ -556,10 +673,10 @@ function stopRecording(ip_address, recordIcon, stopIcon) {
 
 
 function confirmCameraRemoval(ip) {
-    const confirmation = confirm("Are you sure you want to delete this camera?");
-    if (confirmation) {
+    //const confirmation = confirm("Are you sure you want to delete this camera?");
+    //if (confirmation) {
         removeCamera(ip); // Call the function to remove the camera if confirmed
-    }
+    //}
 }
 
 // Function to toggle camera visibility based on its index
@@ -1257,6 +1374,51 @@ function loadScene(sceneNumber) {
             console.error('Error loading scene:', error);
         });
 }
+
+socket.on('camera_discovered', function(data) {
+    // data.ip is the newly discovered camera's IP
+    showDiscoveredCameraNotification(data.ip);
+});
+
+function showDiscoveredCameraNotification(ip) {
+    const container = document.getElementById('mdnsNotifications');
+    const notification = document.createElement('div');
+    notification.classList.add('notification');
+    notification.innerHTML = `
+        Discovered new camera at IP ${ip}.
+        <button class="addCameraBtn">Add</button>
+    `;
+
+    const addButton = notification.querySelector('.addCameraBtn');
+    addButton.addEventListener('click', () => {
+        // Call your existing add_camera endpoint
+        fetch('/add_camera', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ ip_address: ip })
+        }).then(resp => {
+            if (resp.ok) {
+                // Remove notification
+                container.removeChild(notification);
+                // Optionally refresh your camera list
+                fetchAndRenderCameras();
+                fetchAndRenderCameraList();
+            } else {
+                console.error('Failed to add camera.');
+            }
+        });
+    });
+
+    // Optionally auto-close the notification after N seconds
+    setTimeout(() => {
+        if (container.contains(notification)) {
+            container.removeChild(notification);
+        }
+    }, 15000);
+
+    container.appendChild(notification);
+}
+
 
 
 socket.on('battery_status', function(data) {
