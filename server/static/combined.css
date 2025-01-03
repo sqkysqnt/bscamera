@@ -731,6 +731,56 @@ input[type="submit"]:hover {
     background-color: #2c2c2c;
 }
 
+/* Position the container where you want the buttons to appear */
+.layer-button-container {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    z-index: 5;
+    display: flex;        /* Lay out children horizontally */
+    flex-direction: row;  /* default direction anyway */
+    gap: 5px;             /* some space between buttons */
+}
+
+/* Style for each button */
+.layer-button {
+    background-color: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 14px;
+    border-radius: 3px;
+}
+
+.layer-button:hover {
+    background-color: rgba(80, 80, 80, 0.8);
+}
+
+.notifications-container {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    z-index: 9999; /* above everything else */
+  }
+  
+  .notification {
+    background-color: #444;
+    color: #fff;
+    padding: 10px 15px;
+    margin-top: 5px;
+    border-radius: 4px;
+    font-size: 14px;
+    opacity: 0.9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .notification button {
+    margin-left: 10px;
+  }
+  
+
 /***********************************************
  * End of Combined CSS
  ***********************************************/

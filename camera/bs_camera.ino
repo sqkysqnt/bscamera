@@ -21,6 +21,8 @@
 #include <vector>
 #include <nvs_flash.h>
 #include <ArduinoOTA.h>
+#include <ESPmDNS.h>
+
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -55,6 +57,8 @@ String currentVersion = "1.1.1";
 
 bool confirmDHCPRenewal = false;
 bool confirmFactoryReset = false;
+
+bool mdnsEnabled = true;
 
 // TheatreChat OSC Configuration
 bool theatreChatEnabled = true;
@@ -896,12 +900,6 @@ void processCommand(String command) {
         handleMicOff();
     } else if (command == "micReady") {
         handleMicReady();
-    } else if (command == "standby") {
-        handleStandby();
-    } else if (command == "go") {
-        handleGo();
-    } else if (command == "warning") {
-        handleWarning();
     } else if (command == "clear") {
         handleClear();
     } else if (command == "ip") {
@@ -909,7 +907,7 @@ void processCommand(String command) {
     } else if (command == "name") {
         handleDisplayName();     
     } else if (command == "identify") {
-        handleDisplayName();                      
+        handleIdentify();                      
     } else if (command.startsWith("ledOn ")) {
         String ledColor = command.substring(6);  // Extract everything after "ledOn "
         handleLedOn(ledColor);
@@ -1310,14 +1308,40 @@ if (!res) {
       delay(1000);                                 // Short delay so messages get printed
       ESP.restart();                               // Reboot once
     }
+
+
+    
 }
 
+if (res) {
+    if (mdnsEnabled) {
+          String mdnsName = "bscam-" + String(ESP.getEfuseMac(), HEX).substring(8); 
+          // or use your getDefaultHostname() function
+          if (!MDNS.begin(mdnsName.c_str())) {
+              logSerial("Error starting mDNS");
+          } else {
+              logSerial("mDNS started with hostname: " + mdnsName);
+          }
+
+          // Example: Advertise an HTTP service on port 80
+          MDNS.addService("http", "tcp", 80);
+
+          // Optionally advertise a separate streaming service on port 81
+          // so your server can discover it by `_mycamera._tcp.local.` or similar
+          MDNS.addService("mycamera", "tcp", 81);
+
+          // If you want to attach extra info:
+          MDNS.addServiceTxt("mycamera", "tcp", "firmware", currentVersion);
+          MDNS.addServiceTxt("mycamera", "tcp", "device", theatreChatName);
+    }
+}
 
     // Subscribing to OSC endpoints and routing them to functions
     OscWiFi.subscribe(oscPort, "/micOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleMicOn); });
     OscWiFi.subscribe(oscPort, "/micOff", [](OscMessage &msg) { captureMessageAndProcess(msg, handleMicOff); });
     OscWiFi.subscribe(oscPort, "/micReady", [](OscMessage &msg) { captureMessageAndProcess(msg, handleMicReady); });
     OscWiFi.subscribe(oscPort, "/display", [](OscMessage &msg) { captureMessageAndProcess(msg, handleDisplay); });
+    OscWiFi.subscribe(oscPort, "/identify", [](OscMessage &msg) { captureMessageAndProcess(msg, handleIdentify); });
     OscWiFi.subscribe(oscPort, "/clear", [](OscMessage &msg) { captureMessageAndProcess(msg, handleClear); });
     OscWiFi.subscribe(oscPort, "/ledOn", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOnFromOSC); });
     OscWiFi.subscribe(oscPort, "/ledOff", [](OscMessage &msg) { captureMessageAndProcess(msg, handleLedOff); });
@@ -1771,36 +1795,7 @@ void loop() {
         PMU.clearIrqStatus();
     }
 
-    if (millis() - loopMillis > 1000) {
-        if (PMU.isBatteryConnect()) {
-            batteryConnected = true;
-            batteryPercent = PMU.getBatteryPercent();  // Update the global variable
-        } else {
-            batteryConnected = false;
-            batteryPercent = -1;  // Set to an invalid value if not connected
-        }
 
-        // Show if USB power is present
-        bool usbPower = PMU.isVbusIn();
-        if (usbPower) {
-            // Only set chargingActive if we haven't dismissed it
-            if (!chargingDismissed && !chargingActive) {
-                chargingActive = true; 
-                chargingScreenDisplayed = false; 
-                logSerial("USB plugged in; starting charging display.");
-            }
-        } else {
-            // If USB power is gone, allow charging to be shown next time:
-            if (chargingActive) {
-                chargingActive = false;
-                chargingScreenDisplayed = false;
-                chargingClear();
-            }
-            chargingDismissed = false; // So next time we actually see it again
-            logSerial("USB unplugged; cleared charging state.");
-        }
-        loopMillis = millis();
-    }
 
         if (pirTriggered) {
         pirTriggered = false;
@@ -1846,24 +1841,6 @@ void loop() {
         logSerial("Stream ended.");
         streamingClient.stop();
         isStreaming = false;
-    }
-    
-    if (chargingActive) {
-        // Redraw “Charging” once a second, or however often you like
-        static unsigned long lastChargeRefresh = 0;
-        if (millis() - lastChargeRefresh > 1000) { 
-            lastChargeRefresh = millis();
-
-            // For a fresh screen, or to keep updating
-            u8g2.clearBuffer();
-            if (batteryConnected && batteryPercent >= 0) {
-                displayScreen("Charging: " + String(batteryPercent) + "%");
-            } else {
-                displayScreen("Charging...");
-            }
-        }
-
-        // Keep running other code; do NOT "return;"
     }
 
 

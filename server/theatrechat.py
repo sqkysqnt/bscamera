@@ -9,6 +9,7 @@ import threading
 import uuid
 from werkzeug.utils import secure_filename
 from flask import render_template,Flask,request,jsonify, url_for
+import json
 
 # No imports from app.py to avoid circular dependencies
 
@@ -28,16 +29,18 @@ pending_commands = {}
 pending_commands_lock = threading.Lock()
 numCamList = 3  # Adjust this value as needed
 
+CHANNELS_FILE = 'channels.json'
 
 def init_theatrechat(app, sockio, disp, osc_port, num_cameras_func):
-    global socketio, dispatcher, OSC_PORT, BROADCAST_IP, osc_client, get_num_cameras
+    global socketio, dispatcher, OSC_PORT, BROADCAST_IP, osc_client, get_num_cameras, channels
 
     socketio = sockio
     dispatcher = disp
     OSC_PORT = osc_port
     get_num_cameras = num_cameras_func  # Assign the function
+    channels = load_channels()  # Load channels from the JSON file
+
     global UPLOAD_FOLDER  # Make it modifiable in this function
-        # Now define the upload folder *after* app exists
     UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -57,6 +60,28 @@ def init_theatrechat(app, sockio, disp, osc_port, num_cameras_func):
     # Register socketio event handlers
     register_socketio_handlers()
 
+
+# Load channels from the JSON file
+def load_channels():
+    try:
+        with open(CHANNELS_FILE, 'r') as f:
+            channels = json.load(f)
+            logging.info(f"Channels loaded successfully: {channels}")
+            return channels
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.warning(f"Channels file not found or corrupted: {e}. Resetting to default.")
+        default_channels = ["cameras", "audio"]
+        save_channels(default_channels)
+        return default_channels
+
+
+def save_channels(channels):
+    try:
+        with open(CHANNELS_FILE, 'w') as f:
+            json.dump(channels, f)
+        logging.info(f"Channels saved successfully: {channels}")
+    except Exception as e:
+        logging.error(f"Failed to save channels: {e}")
 
 def register_socketio_handlers():
     @socketio.on('send_message')
@@ -138,6 +163,54 @@ def register_socketio_handlers():
         })
 
 
+    @socketio.on('add_channel')
+    def handle_add_channel(data):
+        channel_name = data.get('channel_name', '').strip()
+        if channel_name and channel_name not in channels:
+            channels.append(channel_name)
+            save_channels(channels)  # Save the updated channel list
+            socketio.emit('update_channels', {"channels": channels})  # Broadcast updated list
+
+    @socketio.on('remove_channel')
+    def handle_remove_channel(data):
+        channel_name = data.get('channel_name', '').strip()
+        normalized_name = channel_name.lower()
+        existing_channels = [ch.lower() for ch in channels]
+
+        logging.info(f"Attempting to remove channel: {channel_name}")
+        logging.info(f"Current channels: {channels}")
+
+        # Prevent removal of default channels
+        if normalized_name in ["cameras", "audio"]:
+            logging.warning(f"Attempted to remove default channel: {channel_name}")
+            socketio.emit('error', {"message": f"Cannot remove default channel '{channel_name}'"})
+            return
+
+        # Check if the channel exists
+        if normalized_name in existing_channels:
+            original_name = next(ch for ch in channels if ch.lower() == normalized_name)
+            channels.remove(original_name)
+            logging.info(f"Channel removed: {original_name}")
+            save_channels(channels)  # Save the updated channel list
+
+            # Verify the JSON file was updated
+            updated_channels = load_channels()
+            logging.info(f"Channels after removal: {updated_channels}")
+
+            # Notify clients
+            socketio.emit('update_channels', {"channels": updated_channels})
+        else:
+            logging.warning(f"Channel '{channel_name}' does not exist.")
+            socketio.emit('error', {"message": f"Channel '{channel_name}' does not exist"})
+
+
+
+
+
+    @socketio.on('get_channels')
+    def handle_get_channels():
+        logging.info(f"Current channels: {channels}")
+        socketio.emit('update_channels', {"channels": channels})
 
 
 
@@ -342,7 +415,6 @@ def messages_page():
         SELECT id, timestamp, sender_name, message, channel, me 
         FROM messages
         ORDER BY id DESC
-        LIMIT 50
     ''')
     messages = cursor.fetchall()
     conn.close()

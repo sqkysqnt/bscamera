@@ -32,6 +32,9 @@ from flask import session
 from functools import wraps
 import importlib
 from plugins.plugin_interface import PluginInterface
+from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
+from zeroconf.asyncio import AsyncServiceInfo
+import asyncio
 
 
 
@@ -75,6 +78,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 last_loaded_scene = None  # Global variable to track last loaded scene
 
 loaded_plugins_info = []
+
+discovered_cameras = set()
+zeroconf_instance = None
+mdns_browser = None
 
 # Import the theatrechat module after initializing app, socketio, and dispatcher
 import theatrechat
@@ -477,6 +484,70 @@ def notify_frontend_scene_loaded():
     logging.info("Notifying front-end to refresh camera layout.")
 
 
+def camera_exists_in_scenes(ip_address):
+    """
+    Return True if the given IP is already present in any scene.
+    """
+    scenes = load_scenes()
+    for scene in scenes.get('scenes', []):
+        for cam in scene.get('cameras', []):
+            if cam.get('ip') == ip_address:
+                return True
+    return False
+
+class MDNSListener:
+    def __init__(self, zeroconf, socketio):
+        self.zeroconf = zeroconf
+        self.socketio = socketio
+
+    def add_service(self, zeroconf, service_type, name):
+        print(f"Discovered service: {name}")
+
+        async def fetch_info():
+            info = AsyncServiceInfo(type_=service_type, name=name)
+            success = await info.async_request(self.zeroconf, timeout=2.0)
+            if success:
+                addresses = info.parsed_addresses()
+                if addresses:
+                    ip_address = addresses[0]
+                    # For debugging:
+                    print(f"Resolved IP for {name} = {ip_address}")
+
+                    # (Optional) Check if it’s already in scenes or discovered_cameras
+                    # If not, emit the event:
+                    self.socketio.emit(
+                        'camera_discovered',
+                        {'ip': ip_address},
+                        namespace='/'
+                    )
+                    print(f"Emitted camera_discovered for IP: {ip_address}")
+                else:
+                    print(f"No addresses found for service {name}")
+            else:
+                print(f"Timed out trying to resolve {name}")
+
+        # Kick off the async resolution
+        loop = asyncio.get_event_loop()
+        loop.create_task(fetch_info())
+
+    def remove_service(self, zeroconf, service_type, name):
+        pass
+
+    def update_service(self, zeroconf, service_type, name):
+        pass
+
+
+def mdns_discovery_task():
+    global zeroconf_instance, mdns_browser
+    zeroconf_instance = Zeroconf()
+    listener = MDNSListener(zeroconf_instance, socketio)
+    mdns_browser = ServiceBrowser(zeroconf_instance, "_mycamera._tcp.local.", listener)
+
+    # Keep it running
+    while True:
+        eventlet.sleep(60)  # Sleep so we don't exit; you can choose another interval
+
+
 # Handler for adding a camera
 def osc_add_camera_handler(address, *args):
     ip_address = args[0]
@@ -488,8 +559,8 @@ def osc_add_camera_handler(address, *args):
             "ip": ip_address,
             "name": "Unnamed Camera",  # Default camera name
             "position": {
-                "left": len(cameras) * 350,
-                "top": len(cameras) * 100
+                "left": 0,   # Always 0
+                "top": 0     # Always 0
             },
             "size": {
                 "width": 320,
@@ -619,8 +690,10 @@ def add_camera():
             "ip": ip_address,
             "name": "Unnamed Camera",  # Default camera name
             "position": {
-                "left": len(current_scene['cameras']) * 350,
-                "top": len(current_scene['cameras']) * 100
+                "left": 0,  # Force 0
+                "top": 0    # Force 0
+                #"left": len(current_scene['cameras']) * 350,
+                #"top": len(current_scene['cameras']) * 100
             },
             "size": {
                 "width": 320,
@@ -678,6 +751,9 @@ def remove_camera(ip_address):
     save_scenes(scenes)
 
     return '', 204
+
+
+
 
 
 
@@ -796,6 +872,9 @@ def update_camera():
     position = data.get('position', {})
     size = data.get('size', {})
 
+    # ➜ Also read newZ if present
+    new_z = data.get('zIndex')  # might be None if not sent from client    
+
     if not (isinstance(position.get('left'), int) and isinstance(position.get('top'), int) and 
             isinstance(size.get('width'), int) and isinstance(size.get('height'), int)):
         app.logger.error("Invalid position/size data in update_camera")
@@ -807,6 +886,8 @@ def update_camera():
         if camera['ip'] == ip:
             camera['position'] = position
             camera['size'] = size
+            if isinstance(new_z, int):
+                camera['zIndex'] = new_z            
             camera_found = True
             break
 
@@ -873,6 +954,8 @@ def save_current_scene_cameras(cameras):
         camera.setdefault("position", {"left": 0, "top": 0})
         camera.setdefault("size", {"width": 320, "height": 240})
         camera.setdefault("visible", True)
+        # ➜ Add this line
+        camera.setdefault("zIndex", 0)  # Default zIndex if not present
 
     # Update the cameras in the current scene
     for scene in scenes['scenes']:
@@ -881,6 +964,7 @@ def save_current_scene_cameras(cameras):
             break
 
     save_scenes(scenes)
+
 
 
 
@@ -1075,6 +1159,10 @@ def cleanup():
         recorder.stop()
         recorder.join()
     print("Cleanup completed. All camera recorders have been stopped.")
+    # Shutdown Zeroconf
+    if zeroconf_instance:
+        zeroconf_instance.close()
+    print("Cleanup completed. Zeroconf stopped.")
 
 
 @socketio.on('disconnect')
@@ -1093,6 +1181,9 @@ if __name__ == '__main__':
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         # Start the OSC server using Eventlet's green thread
         socketio.start_background_task(start_osc_server)
+
+        # Start mDNS discovery in background
+        socketio.start_background_task(mdns_discovery_task)
     try:
         socketio.run(app, host='0.0.0.0', port=15000)
     except KeyboardInterrupt:
