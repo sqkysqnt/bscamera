@@ -1,10 +1,19 @@
-opencv-python
 eventlet
+Flask
+flask-socketio
+requests
 filelock
-flask
-flask_socketio
+logging  # Note: Built-in library; no need to install.
+sys  # Note: Built-in library; no need to install.
+struct  # Note: Built-in library; no need to install.
+opencv-python-headless  # For cv2
+python-osc
 netifaces
 numpy
-python-osc
-requests
+datetime  # Note: Built-in library; no need to install.
 urllib3
+base64  # Note: Built-in library; no need to install.
+subprocess  # Note: Built-in library; no need to install.
+werkzeug
+asyncio
+zeroconf
