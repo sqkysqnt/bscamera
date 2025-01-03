@@ -1377,6 +1377,7 @@ function loadScene(sceneNumber) {
 
 socket.on('camera_discovered', function(data) {
     // data.ip is the newly discovered camera's IP
+    console.log('Received camera_discovered event:', data);
     showDiscoveredCameraNotification(data.ip);
 });
 
