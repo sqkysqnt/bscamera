@@ -33,6 +33,8 @@ from functools import wraps
 import importlib
 from plugins.plugin_interface import PluginInterface
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
+from zeroconf.asyncio import AsyncServiceInfo
+import asyncio
 
 
 
@@ -499,27 +501,39 @@ class MDNSListener:
         self.socketio = socketio
 
     def add_service(self, zeroconf, service_type, name):
-        info = zeroconf.get_service_info(service_type, name)
-        if info:
-            addresses = info.parsed_addresses()
-            if not addresses:
-                return
-            ip_address = addresses[0]
-            # If it's already in scenes, or already discovered, skip
-            if camera_exists_in_scenes(ip_address) or ip_address in discovered_cameras:
-                return
+        print(f"Discovered service: {name}")
 
-            # Otherwise, add to discovered_cameras
-            discovered_cameras.add(ip_address)
+        async def fetch_info():
+            info = AsyncServiceInfo(type_=service_type, name=name)
+            success = await info.async_request(self.zeroconf, timeout=2.0)
+            if success:
+                addresses = info.parsed_addresses()
+                if addresses:
+                    ip_address = addresses[0]
+                    # For debugging:
+                    print(f"Resolved IP for {name} = {ip_address}")
 
-            # Notify front-end via SocketIO
-            self.socketio.emit('camera_discovered', {
-                'ip': ip_address
-            }, namespace='/')
-            print(f"Discovered new camera via mDNS: {ip_address}")
+                    # (Optional) Check if it’s already in scenes or discovered_cameras
+                    # If not, emit the event:
+                    self.socketio.emit(
+                        'camera_discovered',
+                        {'ip': ip_address},
+                        namespace='/'
+                    )
+                    print(f"Emitted camera_discovered for IP: {ip_address}")
+                else:
+                    print(f"No addresses found for service {name}")
+            else:
+                print(f"Timed out trying to resolve {name}")
+
+        # Kick off the async resolution
+        loop = asyncio.get_event_loop()
+        loop.create_task(fetch_info())
 
     def remove_service(self, zeroconf, service_type, name):
-        # Called when a service goes away (optional to handle).
+        pass
+
+    def update_service(self, zeroconf, service_type, name):
         pass
 
 
