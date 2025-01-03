@@ -13,15 +13,19 @@
         <div class="toolbar">
             <h2>Theatre Chat</h2>
             <div class="username-display" id="username-display"></div>
-            <div class="channel-select">
+            <div class="channel-select" id="channel-select">
                 <button class="channel-button active" data-channel="cameras">Cameras</button>
                 <button class="channel-button" data-channel="audio">Audio</button>
-                <button class="channel-button" data-channel="lights">Lights</button>
             </div>
 
+        
             <!-- Set username button at the bottom -->
             <div class="set-username-container">
-                <button class="channel-button" id="set-username-button">Set Username</button>
+                <div class="channel-management">
+                    <button class="settings-button" id="add-channel-button">Add Channel</button>
+                    <button class="settings-button" id="remove-channel-button">Remove Channel</button>
+                </div>
+                <button class="settings-button" id="set-username-button">Set Username</button>
             </div>
         </div>
 
@@ -70,6 +74,7 @@
     </div>
 
     <script>
+        let channels = [];
         console.log("LOADED: This is my real messages.html version 12, time =", new Date());
 
         if (Notification.permission === 'default') {
@@ -95,7 +100,16 @@
                 }
             });
 
-            applyFilters(); // Update the chat view based on the selected channel
+            // Mark all existing messages as either 'chat-me' or 'chat-other'
+            const messages = document.querySelectorAll('.chat-message');
+            messages.forEach((msg) => {
+                const sender = msg.getAttribute('data-sender-name');
+                const isMe = (sender === chosenUsername);
+                msg.classList.add(isMe ? 'chat-me' : 'chat-other');
+            });
+
+            applyFilters();
+            scrollToBottom(); // Scroll to the latest message on load
         });
 
         // Large array of emojis (expand as desired)
@@ -136,12 +150,34 @@
             }
         });
 
+
+        function scrollToBottom() {
+            const chatWindow = document.getElementById('chat-window');
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // Scroll to the bottom on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const channelButtons = document.querySelectorAll('.channel-button');
+            channelButtons.forEach((button) => {
+                const channel = button.getAttribute('data-channel');
+                if (channel === selectedChannel) {
+                    button.classList.add('active');
+                } else {
+                    button.classList.remove('active');
+                }
+            });
+
+            applyFilters();
+            scrollToBottom(); // Scroll to the latest message on load
+        });
+
         socket.on('new_message', (data) => {
             const chatWindow = document.getElementById('chat-window');
-            
+
             const existingMessage = chatWindow.querySelector(`.chat-message[data-id="${data.id}"]`);
             if (existingMessage) {
-                return;
+                return; // Avoid duplicating messages
             }
 
             const messageElement = document.createElement('div');
@@ -161,26 +197,8 @@
 
             chatWindow.appendChild(messageElement);
 
-            const allMessages = chatWindow.querySelectorAll('.chat-message');
-            if (allMessages.length > 50) {
-                chatWindow.removeChild(allMessages[0]);
-            }
-
-            chatWindow.scrollTop = chatWindow.scrollHeight; 
             applyFilters();
-
-            if (Notification.permission === 'granted' && !isMe) {
-                const notification = new Notification(`New Message from ${data.sender_name}`, {
-                    body: data.message,
-                    icon: '/static/icons/message-icon.png',
-                    tag: data.id
-                });
-
-                notification.onclick = () => {
-                    window.focus(); // Bring the chat window to focus
-                };
-            }
-
+            scrollToBottom(); // Automatically scroll to the latest message
         });
 
         function sendMessage() {
@@ -340,6 +358,100 @@
                 imageInput.value = "";
             });
         });
+
+        // Define renderChannels at the top-level scope
+        function renderChannels(channelList) {
+            const channelSelect = document.getElementById('channel-select');
+            channelSelect.innerHTML = ''; // Clear existing buttons
+            channelList.forEach(channel => {
+                const button = document.createElement('button');
+                button.className = 'channel-button';
+                button.dataset.channel = channel;
+                button.textContent = channel.charAt(0).toUpperCase() + channel.slice(1);
+                if (channel === selectedChannel) {
+                    button.classList.add('active');
+                }
+                button.addEventListener('click', () => {
+                    selectChannel(channel);
+                });
+                channelSelect.appendChild(button);
+            });
+        }
+
+        // Keep selectChannel function outside too
+        function selectChannel(channel) {
+            selectedChannel = channel;
+            localStorage.setItem('selectedChannel', selectedChannel);
+            renderChannels(channels); // Re-render buttons to highlight the selected one
+            applyFilters();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const defaultChannels = ['cameras', 'audio'];
+            let channels = [...defaultChannels]; // Initialize with default channels
+            const channelSelect = document.getElementById('channel-select');
+
+            socket.on('update_channels', (data) => {
+                channels = data.channels; // Update local list
+                renderChannels(channels);
+            });
+
+            // Fetch channels from the server on page load
+            socket.emit('get_channels');
+        });
+
+
+        // Add a new channels
+        document.getElementById('add-channel-button').addEventListener('click', () => {
+            const newChannel = prompt('Enter new channel name:').trim();
+            if (newChannel && !channels.includes(newChannel)) {
+                socket.emit('add_channel', { channel_name: newChannel }); // Notify server
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ensure channels is populated before adding event listeners
+            socket.emit('get_channels');
+
+            // Add event listener for remove channel button
+            document.getElementById('remove-channel-button').addEventListener('click', () => {
+                if (!channels) {
+                    alert("Channels not loaded yet. Please wait.");
+                    return;
+                }
+                const channelToRemove = prompt('Enter channel name to remove:').trim();
+                if (!channelToRemove) return;
+
+                if (['cameras', 'audio'].includes(channelToRemove.toLowerCase())) {
+                    alert(`Cannot remove default channel: ${channelToRemove}`);
+                    return;
+                }
+
+                if (!channels.includes(channelToRemove)) {
+                    alert(`Channel '${channelToRemove}' does not exist.`);
+                    return;
+                }
+
+                // Emit removal request to the server
+                socket.emit('remove_channel', { channel_name: channelToRemove });
+            });
+        });
+
+
+            // Listen for errors or success
+            socket.on('error', (data) => {
+                alert(data.message); // Display error message from the server
+            });
+
+            socket.on('update_channels', (data) => {
+                channels = data.channels; // Update global variable
+                renderChannels(channels); // Re-render channels
+                console.log("Updated channels: ", channels);
+            });
+      
+
+
+
 
 
     </script>
