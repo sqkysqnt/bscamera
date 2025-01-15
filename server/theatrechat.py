@@ -10,6 +10,8 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import render_template,Flask,request,jsonify, url_for
 import json
+from pywebpush import webpush, WebPushException
+import configparser
 
 # No imports from app.py to avoid circular dependencies
 
@@ -23,6 +25,13 @@ SCENES_FILE = 'scenes.json'
 BROADCAST_IP = None
 osc_client = None
 UPLOAD_FOLDER = None
+subscriptions = []
+
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+public_key = config.get('Server', 'PublicKey')
+private_key = config.get('Server', 'PrivateKey')
 
 # Global variables for pending commands
 pending_commands = {}
@@ -154,13 +163,30 @@ def register_socketio_handlers():
 
         # Do not call enforce_message_limit since we want to keep all messages
         # socketio emit including the new_message_id
-        socketio.emit('new_message', {
+        #socketio.emit('new_message', {
+        #    'id': new_message_id,
+        #    'timestamp': timestamp,
+        #    'sender_name': sender,
+        #    'message': message,
+        #    'channel': channel
+        #})
+
+        # Prepare the message data
+        message_data = {
             'id': new_message_id,
             'timestamp': timestamp,
             'sender_name': sender,
             'message': message,
             'channel': channel
-        })
+        }
+
+        # Broadcast to all connected clients
+        broadcast_message_to_clients(message_data)
+        for subscription in subscriptions:
+            send_push_notification(subscription, {
+                "title": "New Message",
+                "message": "You have a new message in the Theatre Chat."
+            })
 
 
     @socketio.on('add_channel')
@@ -243,6 +269,22 @@ def check_for_replies(command_id):
                 # Max resend attempts reached, give up
                 del pending_commands[command_id]
                 logging.warning(f"Max resend attempts reached for command {pending_command['command']}")
+
+
+def send_push_notification(subscription_info, message):
+    try:
+        webpush(
+            subscription_info=subscription_info,
+            data=json.dumps(message),  # or "Hello from BSCam!"
+            vapid_private_key=private_key,
+            vapid_claims={
+                "sub": "mailto:your-email@example.com"
+            }
+        )
+        print("Push Notification Sent!")
+    except WebPushException as ex:
+        print("Push Notification Failed: {}", repr(ex))
+
 
 
 def get_broadcast_ip():
@@ -405,7 +447,15 @@ def send_osc_message_chat(message, channel, sender):
     except Exception as e:
         logging.error(f"Failed to send OSC message: {e}")
 
-
+def broadcast_message_to_clients(message_data):
+    """
+    Broadcast a new message event to all connected clients for real-time updates.
+    """
+    try:
+        socketio.emit('new_message', message_data)
+        logging.info(f"Broadcasted message: {message_data}")
+    except Exception as e:
+        logging.error(f"Failed to broadcast message: {e}")
 
 def messages_page():
     conn = sqlite3.connect('messages.db')
