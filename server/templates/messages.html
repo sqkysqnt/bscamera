@@ -10,23 +10,17 @@
 </head>
 <body>
     <div class="chat-container">
-        <div class="toolbar">
+        <div class="toggle-toolbar" id="toggle-toolbar">Menu</div>
+        <div class="toolbar" id="mobile-toolbar">
             <h2>Theatre Chat</h2>
             <div class="username-display" id="username-display"></div>
             <div class="channel-select" id="channel-select">
                 <button class="channel-button active" data-channel="cameras">Cameras</button>
                 <button class="channel-button" data-channel="audio">Audio</button>
             </div>
-
         
-            <!-- Set username button at the bottom -->
-            <div class="set-username-container">
-                <div class="channel-management">
-                    <button class="settings-button" id="add-channel-button">Add Channel</button>
-                    <button class="settings-button" id="remove-channel-button">Remove Channel</button>
-                </div>
-                <button class="settings-button" id="set-username-button">Set Username</button>
-            </div>
+            <div class="quick-keys-container" id="quick-keys-container"></div>
+            <button class="settings-button" id="settings-button">Settings</button>
         </div>
 
         <div class="main-chat">
@@ -59,7 +53,20 @@
             </div>
         </div>
     </div>
-
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Settings</span>
+                <span class="close-modal" id="close-settings-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <button class="settings-button" id="add-channel-button">Add Channel</button>
+                <button class="settings-button" id="remove-channel-button">Remove Channel</button>
+                <button class="settings-button" id="set-username-button">Set Username</button>
+            </div>
+        </div>
+    </div>
     <!-- Modal for full message display -->
     <div class="modal-overlay" id="modal-overlay">
         <div class="modal-content">
@@ -74,18 +81,109 @@
     </div>
 
     <script>
-        let channels = [];
-        console.log("LOADED: This is my real messages.html version 12, time =", new Date());
+        const socket = io({
+            transports: ["polling","websocket"]
+            //transports: ["websocket"]
+        });
+        // 1. Helper to convert base64-URL-encoded VAPID public key into a Uint8Array
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+            .replace(/\-/g, '+')
+            .replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
 
-        if (Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-                if (permission !== 'granted') {
-                    console.warn('Notifications are disabled by the user.');
-                }
+        // 2. Register the service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/service-worker.js')
+            .then(function(registration) {
+                console.log('Service Worker registered with scope:', registration.scope);
+            })
+            .catch(function(error) {
+                console.error('Service Worker registration failed:', error);
             });
         }
 
-        const socket = io();
+        // 3. Request notification permission (optional if you prefer to do it later)
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+                console.log('Notification permission granted.');
+            } else {
+                console.error('Notification permission denied.');
+            }
+            });
+        }
+
+        // 4. Wait for the service worker to be ready, then fetch the public key and subscribe
+        navigator.serviceWorker.ready.then(function(reg) {
+            // Fetch the public key from your server
+            return fetch('/get_public_key')
+            .then(response => response.json())
+            .then(data => {
+                const publicKey = data.publicKey; // Should be base64-URL-encoded string
+                console.log("DEBUG: Fetched public key:", publicKey);
+
+                // Convert the key to the required format (Uint8Array)
+                const applicationServerKey = urlBase64ToUint8Array(publicKey);
+
+                // Subscribe for push notifications
+                return reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: applicationServerKey
+                });
+            });
+        })
+        .then(function(subscription) {
+            console.log('Push subscription object:', subscription);
+
+            // 5. Send subscription to your server (so you can send push notifications later)
+            return fetch('/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription)
+            });
+        })
+        .then(response => {
+            console.log("DEBUG: /subscribe response:", response.status, response.statusText);
+            // Optionally handle the response further
+        })
+        .catch(function(err) {
+            console.error('Failed to subscribe or fetch public key:', err);
+        });
+
+        let channels = [];
+        console.log("LOADED: This is my real messages.html version 12, time =", new Date());
+
+        // Modal Logic for Settings
+        const settingsButton = document.getElementById('settings-button');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsModal = document.getElementById('close-settings-modal');
+
+        // Open the settings modal
+        settingsButton.addEventListener('click', () => {
+            settingsModal.style.display = 'flex';
+        });
+
+        // Close the settings modal
+        closeSettingsModal.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        // Close modal when clicking outside content
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+
+
         let selectedChannel = localStorage.getItem('selectedChannel') || 'cameras';
 
             // Set the active channel button on page load
@@ -199,7 +297,19 @@
 
             applyFilters();
             scrollToBottom(); // Automatically scroll to the latest message
+
+            // Show a push notification
+            if (Notification.permission === 'granted') {
+                new Notification(`New message from ${data.sender_name}`, {
+                    body: data.message,
+                    icon: '/static/images/icon.svg', // Optional: Path to your notification icon
+                    timestamp: data.timestamp,
+                });
+            } else {
+                console.warn('Notification permissions are not granted.');
+            }
         });
+
 
         function sendMessage() {
             const messageInput = document.getElementById('message-input');
@@ -210,7 +320,7 @@
                     channel: selectedChannel,
                     username: chosenUsername
                 });
-                console.log("DEBUG: About to send image with channel=", selectedChannel);
+                console.log("DEBUG: About to send message with channel=", selectedChannel);
                 messageInput.value = '';
             } else if (chosenUsername === '') {
                 alert("Please set a username before sending messages.");
@@ -449,8 +559,80 @@
                 console.log("Updated channels: ", channels);
             });
       
+            document.addEventListener('DOMContentLoaded', () => {
+                const quickKeysContainer = document.getElementById('quick-keys-container');
+                const quickKeyStorageKey = 'quickKeyTexts';
+                const defaultQuickKeys = [
+                    "Yes", "No", "On My Way", "It looks good",
+                    "I'm working on it", "Standby", "Good to go", "Sounds good"
+                ];
+
+                // Load Quick Key Texts from localStorage
+                let quickKeyTexts = JSON.parse(localStorage.getItem(quickKeyStorageKey)) || defaultQuickKeys;
+
+                // Function to render Quick Keys
+                function renderQuickKeys() {
+                    quickKeysContainer.innerHTML = ''; // Clear existing buttons
+                    quickKeyTexts.forEach((text, index) => {
+                        const button = document.createElement('button');
+                        button.className = 'quick-key-button';
+                        button.textContent = text || `Key ${index + 1}`;
+                        button.addEventListener('click', () => {
+                            sendMessageFromQuickKey(text);
+                        });
+                        button.addEventListener('contextmenu', (event) => {
+                            event.preventDefault(); // Prevent the default right-click menu
+                            editQuickKey(index);
+                        });
+                        quickKeysContainer.appendChild(button);
+                    });
+                }
+
+                // Function to send message from Quick Key
+                function sendMessageFromQuickKey(message) {
+                    if (message.trim() === '') {
+                        alert("This Quick Key is empty. Right-click to set a message.");
+                        return;
+                    }
+                    const selectedChannel = localStorage.getItem('selectedChannel') || 'cameras';
+                    socket.emit('send_message', {
+                        message: message,
+                        channel: selectedChannel,
+                        username: chosenUsername
+                    });
+                }
+
+                // Function to edit Quick Key
+                function editQuickKey(index) {
+                    const newText = prompt(`Enter new text for Quick Key ${index + 1}:`, quickKeyTexts[index]);
+                    if (newText !== null) {
+                        quickKeyTexts[index] = newText.trim();
+                        localStorage.setItem(quickKeyStorageKey, JSON.stringify(quickKeyTexts)); // Save to localStorage
+                        renderQuickKeys(); // Re-render buttons
+                    }
+                }
+
+                // Initialize Quick Keys
+                renderQuickKeys();
+            });
 
 
+            document.addEventListener('DOMContentLoaded', () => {
+                const toggleToolbarButton = document.getElementById('toggle-toolbar');
+                const toolbar = document.getElementById('mobile-toolbar');
+
+                toggleToolbarButton.addEventListener('click', () => {
+                    toolbar.classList.toggle('active');
+                });
+
+                // Close toolbar when clicking outside of it
+                document.addEventListener('click', (e) => {
+                    if (!toolbar.contains(e.target) && e.target !== toggleToolbarButton) {
+                        toolbar.classList.remove('active');
+                    }
+                });
+                scrollToBottom(); // Ensure the chat window scrolls to the bottom
+            });
 
 
 
