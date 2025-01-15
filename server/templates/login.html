@@ -98,6 +98,9 @@
             <button type="submit">Login</button>
         </form>
         <div id="loginError" style="color:red; display:none;">Invalid credentials</div>
+        <a href="/messages">
+            <img src="{{ url_for('static', filename='images/envelope.png') }}" alt="Messages" style="display:block; margin:30px auto; width:70px; height:35px;">
+        </a>        
     </div>
     <script>
     document.getElementById('loginForm').addEventListener('submit', function(event) {
