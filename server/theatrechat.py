@@ -396,7 +396,8 @@ def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_a
     channel = address.split("/")[-1]
     is_me = (sender_name == SENDER_NAME)
 
-    # Check pending commands for replies if needed
+        # Check pending commands for replies if needed
+    # Insert the received message into the database
     with pending_commands_lock:
         pending_commands_items = list(pending_commands.items())
     for command_id, pending_command in pending_commands_items:
@@ -409,8 +410,7 @@ def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_a
                     logging.info(f"Received all expected replies for command {pending_command['command']}")
             break
 
-
-
+    # Insert the received message into the database
     conn = sqlite3.connect('messages.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -422,14 +422,33 @@ def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_a
     new_message_id = cursor.lastrowid
     conn.close()
 
-    # Emit the new message to clients
-    socketio.emit('new_message', {
+    # Prepare message data for clients
+    message_data = {
         'id': new_message_id,
         'timestamp': timestamp,
         'sender_name': sender_name,
         'message': message_text,
         'channel': channel
-    })
+    }
+
+    # Emit the new message to connected clients
+    socketio.emit('new_message', message_data)
+
+    # Broadcast message to web clients
+    broadcast_message_to_clients(message_data)
+
+    # Load push notification subscriptions
+    current_subscriptions = load_subscriptions()
+
+    # Send a push notification to all subscribed users
+    for subscription in current_subscriptions:
+        send_push_notification(subscription, {
+            "title": f"New message from {sender_name}",
+            "message": message_text,
+            "channel": channel,
+            "url": "/messages"
+        })
+
 
 
 
