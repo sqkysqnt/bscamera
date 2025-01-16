@@ -44,7 +44,7 @@
                 <input type="file" id="image-input" accept="image/*" capture="camera" style="display: none;">
                 <button class="image-button" id="upload-image-button"></button>
                 <div class="emoji-container">
-                    <button class="emoji-button" id="emoji-button">😊</button>
+                    <button class="emoji-button" id="emoji-button">🎤</button>
                     <div class="emoji-menu" id="emoji-menu">
                         <!-- Emojis will be inserted here -->
                     </div>
@@ -87,6 +87,7 @@
         });
         // 1. Helper to convert base64-URL-encoded VAPID public key into a Uint8Array
         function urlBase64ToUint8Array(base64String) {
+            console.log('number 1');
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding)
             .replace(/\-/g, '+')
@@ -96,22 +97,27 @@
             for (let i = 0; i < rawData.length; ++i) {
             outputArray[i] = rawData.charCodeAt(i);
             }
+            console.log('Base 64 function thing');
             return outputArray;
         }
 
         // 2. Register the service worker
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/service-worker.js')
+            console.log('number 2');
+            navigator.serviceWorker.register('/service-worker.js')
             .then(function(registration) {
                 console.log('Service Worker registered with scope:', registration.scope);
+                console.log('number 2.25');
             })
             .catch(function(error) {
                 console.error('Service Worker registration failed:', error);
             });
+            console.log('number 2.5');
         }
 
         // 3. Request notification permission (optional if you prefer to do it later)
         if (Notification.permission === 'default') {
+            console.log('number 3');
             Notification.requestPermission().then(permission => {
             if (permission === 'granted') {
                 console.log('Notification permission granted.');
@@ -120,9 +126,26 @@
             }
             });
         }
+        console.log('number 3.5');
+
+        if (navigator.serviceWorker.controller) {
+            console.log('Service worker is controlling this page:', navigator.serviceWorker.controller);
+        } else {
+            console.log('No active service worker is controlling this page.');
+        }
+
+
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+        .then(function(registration) {
+            console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch(function(error) {
+            console.error('Service Worker registration failed:', error);
+        });
 
         // 4. Wait for the service worker to be ready, then fetch the public key and subscribe
         navigator.serviceWorker.ready.then(function(reg) {
+            console.log('number 4');
             // Fetch the public key from your server
             return fetch('/get_public_key')
             .then(response => response.json())
@@ -132,6 +155,8 @@
 
                 // Convert the key to the required format (Uint8Array)
                 const applicationServerKey = urlBase64ToUint8Array(publicKey);
+                console.log("Application Server Key:", applicationServerKey);
+
 
                 // Subscribe for push notifications
                 return reg.pushManager.subscribe({
@@ -141,6 +166,7 @@
             });
         })
         .then(function(subscription) {
+            console.log('number 5');
             console.log('Push subscription object:', subscription);
 
             // 5. Send subscription to your server (so you can send push notifications later)
@@ -149,15 +175,17 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(subscription)
             });
+            console.log('Subscribed');
         })
         .then(response => {
             console.log("DEBUG: /subscribe response:", response.status, response.statusText);
             // Optionally handle the response further
         })
         .catch(function(err) {
+            console.log('Nope');
             console.error('Failed to subscribe or fetch public key:', err);
         });
-
+        console.log('number too late');
         let channels = [];
         console.log("LOADED: This is my real messages.html version 12, time =", new Date());
 
@@ -213,7 +241,7 @@
         // Large array of emojis (expand as desired)
         // Here’s a representative large subset of emojis:
         const emojis = [
-          ..."😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😜😝🤑🤗🤔🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤤😴😪😵🤐🤢🤮🤧😷🤒🤕🤑🥴🤠😈👿👹👺🤡👻💀👽🤖💩🙈🙉🙊👋🤚🖐✋🖖👌✌🤞🤟🤘🤙👍👎👊🤛🤜👏🙌👐🤲🙏"
+          ..."😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😜😝🤑🤗🤔🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤤😴😪😵🤐🤢🤮🤧😷🤒🤕🤑🥴🤠😈👿👹👺🤡👻💀👽🤖💩🙈🙉🙊👋🤚🖐✋🖖👌✌🤞🤟🤘🤙👍👎👊🤛🤜👏🙌👐🤲🙏🎤🎙️🔈🔇🔉📻📞📹📷🎥📽️💡🧑🏻‍💻👩🏻‍💻💻❤️"
         ];
         // You can add more emojis if desired.
 
@@ -300,11 +328,13 @@
 
             // Show a push notification
             if (Notification.permission === 'granted') {
-                new Notification(`New message from ${data.sender_name}`, {
-                    body: data.message,
-                    icon: '/static/images/icon.svg', // Optional: Path to your notification icon
-                    timestamp: data.timestamp,
-                });
+                console.log("Notification permissions are granted");
+                //new Notification(`New message from ${data.sender_name}`, {
+                //    body: data.message,
+                //    icon: '/static/images/icon.svg', // Optional: Path to your notification icon
+                //    timestamp: data.timestamp,
+                //});
+                console.log("Notification has been created");
             } else {
                 console.warn('Notification permissions are not granted.');
             }
