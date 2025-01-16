@@ -26,6 +26,7 @@ BROADCAST_IP = None
 osc_client = None
 UPLOAD_FOLDER = None
 subscriptions = []
+SUBSCRIPTIONS_FILE = 'subscriptions.json'
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -68,6 +69,24 @@ def init_theatrechat(app, sockio, disp, osc_port, num_cameras_func):
 
     # Register socketio event handlers
     register_socketio_handlers()
+
+def load_subscriptions():
+    try:
+        if os.path.exists(SUBSCRIPTIONS_FILE):
+            with open(SUBSCRIPTIONS_FILE, 'r') as f:
+                return json.load(f)
+        else:
+            return []
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to load subscriptions file: {e}")
+        return []
+
+def save_subscriptions(subs):
+    try:
+        with open(SUBSCRIPTIONS_FILE, 'w') as f:
+            json.dump(subs, f, indent=4)
+    except IOError as e:
+        logging.error(f"Failed to save subscriptions: {e}")
 
 
 # Load channels from the JSON file
@@ -182,10 +201,13 @@ def register_socketio_handlers():
 
         # Broadcast to all connected clients
         broadcast_message_to_clients(message_data)
-        for subscription in subscriptions:
+        # LOAD subscriptions from the file every time you need them
+        current_subscriptions = load_subscriptions()
+        for subscription in current_subscriptions:
             send_push_notification(subscription, {
-                "title": "New Message",
-                "message": "You have a new message in the Theatre Chat."
+                "title": f"{sender}",
+                "message": message,
+                "url": "/messages"
             })
 
 
@@ -275,7 +297,7 @@ def send_push_notification(subscription_info, message):
     try:
         webpush(
             subscription_info=subscription_info,
-            data=json.dumps(message),  # or "Hello from BSCam!"
+            data=json.dumps(message),
             vapid_private_key=private_key,
             vapid_claims={
                 "sub": "mailto:your-email@example.com"
@@ -283,7 +305,7 @@ def send_push_notification(subscription_info, message):
         )
         print("Push Notification Sent!")
     except WebPushException as ex:
-        print("Push Notification Failed: {}", repr(ex))
+        print("Push Notification Failed:", repr(ex))
 
 
 
