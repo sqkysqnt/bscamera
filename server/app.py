@@ -61,6 +61,8 @@ socketio = SocketIO(app,
                     )
 #app.register_blueprint(x32_bp, url_prefix='/x32')
 
+
+
 # Set a secret key for session:
 app.secret_key = "yoursecretkey"  # Change this to a secure value in production.
 
@@ -466,6 +468,10 @@ def load_plugins(app, socketio, dispatcher):
 load_plugins(app, socketio, dispatcher)
 
 
+
+
+
+
 # Handler for loading a scene
 def osc_load_scene_handler(address, *args):
     logging.info(f"OSC message received at {address} with args: {args}")
@@ -744,6 +750,8 @@ def add_camera():
         save_scenes(scenes)
 
     return '', 204
+
+
 
 
 
@@ -1190,9 +1198,28 @@ def cleanup():
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
     subscription = request.json
-    print("DEBUG: subscription received:", subscription)
-    subscriptions.append(subscription)
+    if not subscription or not isinstance(subscription, dict):
+        return jsonify({"error": "Invalid subscription data"}), 400
+
+    logging.debug(f"Subscription received: {subscription}")
+
+    # Load existing subscriptions
+    current_subscriptions = load_subscriptions()
+
+    # Check for duplicates
+    if subscription in current_subscriptions:
+        return jsonify({"message": "Subscription already exists."}), 200
+
+    # Add the new subscription
+    current_subscriptions.append(subscription)
+    save_subscriptions(current_subscriptions)
+
+    # Add this line to keep in-memory subscriptions up to date
+    global subscriptions
+    subscriptions = current_subscriptions
+
     return jsonify({"message": "Subscription successful!"}), 201
+
 
 
 
