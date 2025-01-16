@@ -64,6 +64,10 @@
                 <button class="settings-button" id="add-channel-button">Add Channel</button>
                 <button class="settings-button" id="remove-channel-button">Remove Channel</button>
                 <button class="settings-button" id="set-username-button">Set Username</button>
+                <div class="channel-subscription-container">
+                    <h3>Notification Preferences</h3>
+                    <div id="channel-subscription-list"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -663,6 +667,125 @@
                 });
                 scrollToBottom(); // Ensure the chat window scrolls to the bottom
             });
+
+            // We'll store user channel-subscriptions under this key:
+            const LOCALSTORAGE_CHANNEL_SUBSCRIPTIONS_KEY = "channelSubscriptions";
+
+            // Helper to get user’s subscribed channels from localStorage:
+            function loadSubscribedChannels() {
+                const stored = localStorage.getItem(LOCALSTORAGE_CHANNEL_SUBSCRIPTIONS_KEY);
+                if (!stored) {
+                    return [];  // default empty => not subscribed to anything
+                }
+                try {
+                    return JSON.parse(stored);
+                } catch (e) {
+                    console.error("Failed to parse localStorage channel subscriptions:", e);
+                    return [];
+                }
+            }
+
+            // Helper to save user’s subscribed channels to localStorage:
+            function saveSubscribedChannels(channels) {
+                localStorage.setItem(LOCALSTORAGE_CHANNEL_SUBSCRIPTIONS_KEY, JSON.stringify(channels));
+            }
+
+            // Renders checkboxes for each channel in the settings modal
+            function renderChannelSubscriptionToggles(channelList) {
+                const container = document.getElementById('channel-subscription-list');
+                container.innerHTML = ""; // clear existing
+
+                // Load which channels the user is currently subscribed to
+                const subscribedChannels = loadSubscribedChannels();
+
+                channelList.forEach(channel => {
+                    // create a label + checkbox for each channel
+                    const label = document.createElement('label');
+                    label.style.display = "block"; // each on its own line
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = channel;
+                    checkbox.checked = subscribedChannels.includes(channel);
+
+                    // On change, update localStorage
+                    checkbox.addEventListener('change', (e) => {
+                        const isChecked = e.target.checked;
+                        let currentSubs = loadSubscribedChannels();
+                        if (isChecked) {
+                            // add channel if not already
+                            if (!currentSubs.includes(channel)) {
+                                currentSubs.push(channel);
+                            }
+                        } else {
+                            // remove channel if present
+                            currentSubs = currentSubs.filter(ch => ch !== channel);
+                        }
+                        saveSubscribedChannels(currentSubs);
+                        saveChannelSubscriptionsToIDB(currentSubs);
+                        console.log("Updated subscribed channels:", currentSubs);
+                    });
+
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(" " + channel));
+                    container.appendChild(label);
+                });
+            }
+
+
+            socket.on('update_channels', (data) => {
+                channels = data.channels; // the global channels array
+                renderChannels(channels); // your existing function that draws channel buttons
+                renderChannelSubscriptionToggles(channels); // new function for toggles
+            });
+
+
+            // Simple IndexedDB helper to store channel subscriptions
+            function openChannelDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('channelPreferencesDB', 1);
+                request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('channelSubs')) {
+                    db.createObjectStore('channelSubs', { keyPath: 'id' });
+                }
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e);
+            });
+            }
+
+            async function saveChannelSubscriptionsToIDB(channelsArray) {
+            const db = await openChannelDB();
+            const tx = db.transaction('channelSubs', 'readwrite');
+            const store = tx.objectStore('channelSubs');
+            // We can store just a single record with id='subscribed' or anything you like
+            store.put({ id: 'subscribed', channels: channelsArray });
+            await tx.complete;
+            db.close();
+            }
+
+            async function getChannelSubscriptionsFromIDB() {
+            return new Promise(async (resolve, reject) => {
+                const db = await openChannelDB();
+                const tx = db.transaction('channelSubs', 'readonly');
+                const store = tx.objectStore('channelSubs');
+                const request = store.get('subscribed');
+                request.onsuccess = () => {
+                const result = request.result;
+                db.close();
+                if (!result) {
+                    resolve([]); // default to no subscribed channels if not found
+                } else {
+                    resolve(result.channels || []);
+                }
+                };
+                request.onerror = (e) => {
+                db.close();
+                reject(e);
+                };
+            });
+            }
 
 
 
