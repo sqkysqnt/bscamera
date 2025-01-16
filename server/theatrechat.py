@@ -207,6 +207,7 @@ def register_socketio_handlers():
             send_push_notification(subscription, {
                 "title": f"{sender}",
                 "message": message,
+                "channel": channel,
                 "url": "/messages"
             })
 
