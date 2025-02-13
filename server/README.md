@@ -1,4 +1,4 @@
-# MST Backstage Cameras
+# Backstage Cameras
 
 Create an internal-facing website (hosted onsite, not web-facing) with the following features:
 
