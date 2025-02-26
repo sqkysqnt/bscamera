@@ -369,6 +369,24 @@ EOF
   echo "update-nginx service has been set up and executed."
 fi
 
+
+# ======================
+# Step 4.5: Download socket.io.js
+# ======================
+STATIC_DIR="$BSCAM_DIR/static"
+SOCKET_IO_JS="$STATIC_DIR/socket.io.js"
+
+echo "Downloading socket.io.js..."
+mkdir -p "$STATIC_DIR"
+curl -o "$SOCKET_IO_JS" https://cdn.jsdelivr.net/npm/socket.io-client/dist/socket.io.js
+
+if [[ -f "$SOCKET_IO_JS" ]]; then
+  echo "socket.io.js downloaded successfully to $SOCKET_IO_JS"
+else
+  echo "Failed to download socket.io.js."
+  exit 1
+fi
+
 # ======================
 # Step 5: BSCam service
 # ======================
