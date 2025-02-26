@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Whisper Subprocess Demo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    body { background: #202020; color: #fff; font-family: Arial, sans-serif; }
+    button { margin: 10px; padding: 10px; font-size: 16px; cursor: pointer; }
+    pre { background: #000; padding: 10px; white-space: pre-wrap; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Whisper Plugin (Subprocess) Demo</h1>
+
+  <button onclick="startRec()">Start</button>
+  <button onclick="stopRec()">Stop</button>
+
+  <h3>Final Stop Result (JSON):</h3>
+  <pre id="trans"></pre>
+
+  <h3>Partial / Live Transcription:</h3>
+  <pre id="transcription-text"></pre>
+
+  <script>
+    // Connect to Socket.IO at the same origin by default
+    const socket = io('/whisper');
+
+    async function startRec() {
+      const resp = await fetch('/whisper/start', { method: 'POST' });
+      const json = await resp.json();
+      console.log("Start response:", json);
+      document.getElementById('trans').textContent = "Recording...";
+      document.getElementById('transcription-text').textContent = "";
+    }
+
+    async function stopRec() {
+      const resp = await fetch('/whisper/stop', { method: 'POST' });
+      const json = await resp.json();
+      console.log("Stop response:", json);
+      document.getElementById('trans').textContent = JSON.stringify(json, null, 2);
+    }
+
+    // Receive partial transcription in real-time
+    socket.on('whisper_transcription', (data) => {
+      const textArea = document.getElementById('transcription-text');
+      // Add each partial chunk on a new line
+      textArea.textContent = data.transcription;
+      //textArea.textContent += (data.transcription.trim() + "\n");
+    });
+  </script>
+</body>
+</html>
