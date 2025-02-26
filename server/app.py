@@ -35,19 +35,33 @@ from plugins.plugin_interface import PluginInterface
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
 from zeroconf.asyncio import AsyncServiceInfo
 import asyncio
+import ssl
+from pywebpush import webpush, WebPushException
+import configparser
 
+config = configparser.ConfigParser()
+config.read('config.ini')
 
+# Load credentials from config.ini
+VALID_USERNAME = config.get('Authentication', 'Username', fallback='admin')
+VALID_PASSWORD = config.get('Authentication', 'Password', fallback='thisisthepassword123')
 
-# Store login credentials on the server (for demo only; consider environment variables or a separate config file)
-VALID_USERNAME = "hector"
-VALID_PASSWORD = "hector"
 
 http = urllib3.PoolManager()
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
-socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app, 
+                    async_mode='eventlet',
+                    cors_allowed_origins="*",
+                    logger=True, 
+                    engineio_logger=True,
+                    ping_timeout=30,
+                    ping_interval=10
+                    )
 #app.register_blueprint(x32_bp, url_prefix='/x32')
+
+
 
 # Set a secret key for session:
 app.secret_key = "yoursecretkey"  # Change this to a secure value in production.
@@ -55,8 +69,12 @@ app.secret_key = "yoursecretkey"  # Change this to a secure value in production.
 # Set the plugin directory
 PLUGIN_DIR = "plugins"
 
+public_key = config.get('Server', 'PublicKey')
+private_key = config.get('Server', 'PrivateKey')
+
 # Set up the dispatcher to handle specific OSC addresses
 dispatcher = Dispatcher()
+subscriptions = []
 
 #check_thread = threading.Thread(target=periodic_check, daemon=True)
 #check_thread.start()
@@ -404,6 +422,13 @@ osc_client = udp_client.SimpleUDPClient(BROADCAST_IP, OSC_PORT)
 osc_client._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 
+@app.route('/get_public_key', methods=['GET'])
+def get_public_key():
+    # The public key is stored under [Server] -> PublicKey
+    pub_key = config.get('Server', 'PublicKey', fallback='')
+    return jsonify({"publicKey": pub_key})
+
+
 def load_plugins(app, socketio, dispatcher):
     """
     Dynamically load plugins from the plugins directory.
@@ -441,6 +466,10 @@ def load_plugins(app, socketio, dispatcher):
 
 # Load plugins
 load_plugins(app, socketio, dispatcher)
+
+
+
+
 
 
 # Handler for loading a scene
@@ -721,6 +750,8 @@ def add_camera():
         save_scenes(scenes)
 
     return '', 204
+
+
 
 
 
@@ -1164,6 +1195,34 @@ def cleanup():
         zeroconf_instance.close()
     print("Cleanup completed. Zeroconf stopped.")
 
+@app.route('/subscribe', methods=['POST'])
+def subscribe():
+    subscription = request.json
+    if not subscription or not isinstance(subscription, dict):
+        return jsonify({"error": "Invalid subscription data"}), 400
+
+    logging.debug(f"Subscription received: {subscription}")
+
+    # Load existing subscriptions
+    current_subscriptions = load_subscriptions()
+
+    # Check for duplicates
+    if subscription in current_subscriptions:
+        return jsonify({"message": "Subscription already exists."}), 200
+
+    # Add the new subscription
+    current_subscriptions.append(subscription)
+    save_subscriptions(current_subscriptions)
+
+    # Add this line to keep in-memory subscriptions up to date
+    global subscriptions
+    subscriptions = current_subscriptions
+
+    return jsonify({"message": "Subscription successful!"}), 201
+
+
+
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -1175,8 +1234,10 @@ atexit.register(cleanup)
 
 import os
 
+    
 if __name__ == '__main__':
     app.debug = True  # Enable debug mode
+
     # Only start the OSC server if this is the main process (not the reloader)
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         # Start the OSC server using Eventlet's green thread
@@ -1184,8 +1245,14 @@ if __name__ == '__main__':
 
         # Start mDNS discovery in background
         socketio.start_background_task(mdns_discovery_task)
+
+
     try:
-        socketio.run(app, host='0.0.0.0', port=15000)
+        socketio.run(
+            app,
+            host='0.0.0.0',
+            port=15000,
+        )
     except KeyboardInterrupt:
         logging.info("Application interrupted by user. Shutting down...")
         cleanup()

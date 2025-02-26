@@ -10,23 +10,17 @@
 </head>
 <body>
     <div class="chat-container">
-        <div class="toolbar">
+        <div class="toggle-toolbar" id="toggle-toolbar">Menu</div>
+        <div class="toolbar" id="mobile-toolbar">
             <h2>Theatre Chat</h2>
             <div class="username-display" id="username-display"></div>
             <div class="channel-select" id="channel-select">
                 <button class="channel-button active" data-channel="cameras">Cameras</button>
                 <button class="channel-button" data-channel="audio">Audio</button>
             </div>
-
         
-            <!-- Set username button at the bottom -->
-            <div class="set-username-container">
-                <div class="channel-management">
-                    <button class="settings-button" id="add-channel-button">Add Channel</button>
-                    <button class="settings-button" id="remove-channel-button">Remove Channel</button>
-                </div>
-                <button class="settings-button" id="set-username-button">Set Username</button>
-            </div>
+            <div class="quick-keys-container" id="quick-keys-container"></div>
+            <button class="settings-button" id="settings-button">Settings</button>
         </div>
 
         <div class="main-chat">
@@ -50,7 +44,7 @@
                 <input type="file" id="image-input" accept="image/*" capture="camera" style="display: none;">
                 <button class="image-button" id="upload-image-button"></button>
                 <div class="emoji-container">
-                    <button class="emoji-button" id="emoji-button">😊</button>
+                    <button class="emoji-button" id="emoji-button">🎤</button>
                     <div class="emoji-menu" id="emoji-menu">
                         <!-- Emojis will be inserted here -->
                     </div>
@@ -59,7 +53,24 @@
             </div>
         </div>
     </div>
-
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Settings</span>
+                <span class="close-modal" id="close-settings-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <button class="settings-button" id="add-channel-button">Add Channel</button>
+                <button class="settings-button" id="remove-channel-button">Remove Channel</button>
+                <button class="settings-button" id="set-username-button">Set Username</button>
+                <div class="channel-subscription-container">
+                    <h3>Notification Preferences</h3>
+                    <div id="channel-subscription-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- Modal for full message display -->
     <div class="modal-overlay" id="modal-overlay">
         <div class="modal-content">
@@ -74,18 +85,137 @@
     </div>
 
     <script>
+        const socket = io({
+            transports: ["polling","websocket"]
+            //transports: ["websocket"]
+        });
+        // 1. Helper to convert base64-URL-encoded VAPID public key into a Uint8Array
+        function urlBase64ToUint8Array(base64String) {
+            console.log('number 1');
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+            .replace(/\-/g, '+')
+            .replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+            }
+            console.log('Base 64 function thing');
+            return outputArray;
+        }
+
+        // 2. Register the service worker
+        if ('serviceWorker' in navigator) {
+            console.log('number 2');
+            navigator.serviceWorker.register('/service-worker.js')
+            .then(function(registration) {
+                console.log('Service Worker registered with scope:', registration.scope);
+                console.log('number 2.25');
+            })
+            .catch(function(error) {
+                console.error('Service Worker registration failed:', error);
+            });
+            console.log('number 2.5');
+        }
+
+        // 3. Request notification permission (optional if you prefer to do it later)
+        if (Notification.permission === 'default') {
+            console.log('number 3');
+            Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+                console.log('Notification permission granted.');
+            } else {
+                console.error('Notification permission denied.');
+            }
+            });
+        }
+        console.log('number 3.5');
+
+        if (navigator.serviceWorker.controller) {
+            console.log('Service worker is controlling this page:', navigator.serviceWorker.controller);
+        } else {
+            console.log('No active service worker is controlling this page.');
+        }
+
+
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+        .then(function(registration) {
+            console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch(function(error) {
+            console.error('Service Worker registration failed:', error);
+        });
+
+        // 4. Wait for the service worker to be ready, then fetch the public key and subscribe
+        navigator.serviceWorker.ready.then(function(reg) {
+            console.log('number 4');
+            // Fetch the public key from your server
+            return fetch('/get_public_key')
+            .then(response => response.json())
+            .then(data => {
+                const publicKey = data.publicKey; // Should be base64-URL-encoded string
+                console.log("DEBUG: Fetched public key:", publicKey);
+
+                // Convert the key to the required format (Uint8Array)
+                const applicationServerKey = urlBase64ToUint8Array(publicKey);
+                console.log("Application Server Key:", applicationServerKey);
+
+
+                // Subscribe for push notifications
+                return reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: applicationServerKey
+                });
+            });
+        })
+        .then(function(subscription) {
+            console.log('number 5');
+            console.log('Push subscription object:', subscription);
+
+            // 5. Send subscription to your server (so you can send push notifications later)
+            return fetch('/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription)
+            });
+            console.log('Subscribed');
+        })
+        .then(response => {
+            console.log("DEBUG: /subscribe response:", response.status, response.statusText);
+            // Optionally handle the response further
+        })
+        .catch(function(err) {
+            console.log('Nope');
+            console.error('Failed to subscribe or fetch public key:', err);
+        });
+        console.log('number too late');
         let channels = [];
         console.log("LOADED: This is my real messages.html version 12, time =", new Date());
 
-        if (Notification.permission === 'default') {
-            Notification.requestPermission().then(permission => {
-                if (permission !== 'granted') {
-                    console.warn('Notifications are disabled by the user.');
-                }
-            });
-        }
+        // Modal Logic for Settings
+        const settingsButton = document.getElementById('settings-button');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsModal = document.getElementById('close-settings-modal');
 
-        const socket = io();
+        // Open the settings modal
+        settingsButton.addEventListener('click', () => {
+            settingsModal.style.display = 'flex';
+        });
+
+        // Close the settings modal
+        closeSettingsModal.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        // Close modal when clicking outside content
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+
+
         let selectedChannel = localStorage.getItem('selectedChannel') || 'cameras';
 
             // Set the active channel button on page load
@@ -115,7 +245,7 @@
         // Large array of emojis (expand as desired)
         // Here’s a representative large subset of emojis:
         const emojis = [
-          ..."😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😜😝🤑🤗🤔🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤤😴😪😵🤐🤢🤮🤧😷🤒🤕🤑🥴🤠😈👿👹👺🤡👻💀👽🤖💩🙈🙉🙊👋🤚🖐✋🖖👌✌🤞🤟🤘🤙👍👎👊🤛🤜👏🙌👐🤲🙏"
+          ..."😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😜😝🤑🤗🤔🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤤😴😪😵🤐🤢🤮🤧😷🤒🤕🤑🥴🤠😈👿👹👺🤡👻💀👽🤖💩🙈🙉🙊👋🤚🖐✋🖖👌✌🤞🤟🤘🤙👍👎👊🤛🤜👏🙌👐🤲🙏🎤🎙️🔈🔇🔉📻📞📹📷🎥📽️💡🧑🏻‍💻👩🏻‍💻💻❤️"
         ];
         // You can add more emojis if desired.
 
@@ -199,7 +329,21 @@
 
             applyFilters();
             scrollToBottom(); // Automatically scroll to the latest message
+
+            // Show a push notification
+            if (Notification.permission === 'granted') {
+                console.log("Notification permissions are granted");
+                //new Notification(`New message from ${data.sender_name}`, {
+                //    body: data.message,
+                //    icon: '/static/images/icon.svg', // Optional: Path to your notification icon
+                //    timestamp: data.timestamp,
+                //});
+                console.log("Notification has been created");
+            } else {
+                console.warn('Notification permissions are not granted.');
+            }
         });
+
 
         function sendMessage() {
             const messageInput = document.getElementById('message-input');
@@ -210,7 +354,7 @@
                     channel: selectedChannel,
                     username: chosenUsername
                 });
-                console.log("DEBUG: About to send image with channel=", selectedChannel);
+                console.log("DEBUG: About to send message with channel=", selectedChannel);
                 messageInput.value = '';
             } else if (chosenUsername === '') {
                 alert("Please set a username before sending messages.");
@@ -449,8 +593,199 @@
                 console.log("Updated channels: ", channels);
             });
       
+            document.addEventListener('DOMContentLoaded', () => {
+                const quickKeysContainer = document.getElementById('quick-keys-container');
+                const quickKeyStorageKey = 'quickKeyTexts';
+                const defaultQuickKeys = [
+                    "Yes", "No", "On My Way", "It looks good",
+                    "I'm working on it", "Standby", "Good to go", "Sounds good"
+                ];
+
+                // Load Quick Key Texts from localStorage
+                let quickKeyTexts = JSON.parse(localStorage.getItem(quickKeyStorageKey)) || defaultQuickKeys;
+
+                // Function to render Quick Keys
+                function renderQuickKeys() {
+                    quickKeysContainer.innerHTML = ''; // Clear existing buttons
+                    quickKeyTexts.forEach((text, index) => {
+                        const button = document.createElement('button');
+                        button.className = 'quick-key-button';
+                        button.textContent = text || `Key ${index + 1}`;
+                        button.addEventListener('click', () => {
+                            sendMessageFromQuickKey(text);
+                        });
+                        button.addEventListener('contextmenu', (event) => {
+                            event.preventDefault(); // Prevent the default right-click menu
+                            editQuickKey(index);
+                        });
+                        quickKeysContainer.appendChild(button);
+                    });
+                }
+
+                // Function to send message from Quick Key
+                function sendMessageFromQuickKey(message) {
+                    if (message.trim() === '') {
+                        alert("This Quick Key is empty. Right-click to set a message.");
+                        return;
+                    }
+                    const selectedChannel = localStorage.getItem('selectedChannel') || 'cameras';
+                    socket.emit('send_message', {
+                        message: message,
+                        channel: selectedChannel,
+                        username: chosenUsername
+                    });
+                }
+
+                // Function to edit Quick Key
+                function editQuickKey(index) {
+                    const newText = prompt(`Enter new text for Quick Key ${index + 1}:`, quickKeyTexts[index]);
+                    if (newText !== null) {
+                        quickKeyTexts[index] = newText.trim();
+                        localStorage.setItem(quickKeyStorageKey, JSON.stringify(quickKeyTexts)); // Save to localStorage
+                        renderQuickKeys(); // Re-render buttons
+                    }
+                }
+
+                // Initialize Quick Keys
+                renderQuickKeys();
+            });
 
 
+            document.addEventListener('DOMContentLoaded', () => {
+                const toggleToolbarButton = document.getElementById('toggle-toolbar');
+                const toolbar = document.getElementById('mobile-toolbar');
+
+                toggleToolbarButton.addEventListener('click', () => {
+                    toolbar.classList.toggle('active');
+                });
+
+                // Close toolbar when clicking outside of it
+                document.addEventListener('click', (e) => {
+                    if (!toolbar.contains(e.target) && e.target !== toggleToolbarButton) {
+                        toolbar.classList.remove('active');
+                    }
+                });
+                scrollToBottom(); // Ensure the chat window scrolls to the bottom
+            });
+
+            // We'll store user channel-subscriptions under this key:
+            const LOCALSTORAGE_CHANNEL_SUBSCRIPTIONS_KEY = "channelSubscriptions";
+
+            // Helper to get user’s subscribed channels from localStorage:
+            function loadSubscribedChannels() {
+                const stored = localStorage.getItem(LOCALSTORAGE_CHANNEL_SUBSCRIPTIONS_KEY);
+                if (!stored) {
+                    return [];  // default empty => not subscribed to anything
+                }
+                try {
+                    return JSON.parse(stored);
+                } catch (e) {
+                    console.error("Failed to parse localStorage channel subscriptions:", e);
+                    return [];
+                }
+            }
+
+            // Helper to save user’s subscribed channels to localStorage:
+            function saveSubscribedChannels(channels) {
+                localStorage.setItem(LOCALSTORAGE_CHANNEL_SUBSCRIPTIONS_KEY, JSON.stringify(channels));
+            }
+
+            // Renders checkboxes for each channel in the settings modal
+            function renderChannelSubscriptionToggles(channelList) {
+                const container = document.getElementById('channel-subscription-list');
+                container.innerHTML = ""; // clear existing
+
+                // Load which channels the user is currently subscribed to
+                const subscribedChannels = loadSubscribedChannels();
+
+                channelList.forEach(channel => {
+                    // create a label + checkbox for each channel
+                    const label = document.createElement('label');
+                    label.style.display = "block"; // each on its own line
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = channel;
+                    checkbox.checked = subscribedChannels.includes(channel);
+
+                    // On change, update localStorage
+                    checkbox.addEventListener('change', (e) => {
+                        const isChecked = e.target.checked;
+                        let currentSubs = loadSubscribedChannels();
+                        if (isChecked) {
+                            // add channel if not already
+                            if (!currentSubs.includes(channel)) {
+                                currentSubs.push(channel);
+                            }
+                        } else {
+                            // remove channel if present
+                            currentSubs = currentSubs.filter(ch => ch !== channel);
+                        }
+                        saveSubscribedChannels(currentSubs);
+                        saveChannelSubscriptionsToIDB(currentSubs);
+                        console.log("Updated subscribed channels:", currentSubs);
+                    });
+
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(" " + channel));
+                    container.appendChild(label);
+                });
+            }
+
+
+            socket.on('update_channels', (data) => {
+                channels = data.channels; // the global channels array
+                renderChannels(channels); // your existing function that draws channel buttons
+                renderChannelSubscriptionToggles(channels); // new function for toggles
+            });
+
+
+            // Simple IndexedDB helper to store channel subscriptions
+            function openChannelDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('channelPreferencesDB', 1);
+                request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('channelSubs')) {
+                    db.createObjectStore('channelSubs', { keyPath: 'id' });
+                }
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e);
+            });
+            }
+
+            async function saveChannelSubscriptionsToIDB(channelsArray) {
+            const db = await openChannelDB();
+            const tx = db.transaction('channelSubs', 'readwrite');
+            const store = tx.objectStore('channelSubs');
+            // We can store just a single record with id='subscribed' or anything you like
+            store.put({ id: 'subscribed', channels: channelsArray });
+            await tx.complete;
+            db.close();
+            }
+
+            async function getChannelSubscriptionsFromIDB() {
+            return new Promise(async (resolve, reject) => {
+                const db = await openChannelDB();
+                const tx = db.transaction('channelSubs', 'readonly');
+                const store = tx.objectStore('channelSubs');
+                const request = store.get('subscribed');
+                request.onsuccess = () => {
+                const result = request.result;
+                db.close();
+                if (!result) {
+                    resolve([]); // default to no subscribed channels if not found
+                } else {
+                    resolve(result.channels || []);
+                }
+                };
+                request.onerror = (e) => {
+                db.close();
+                reject(e);
+                };
+            });
+            }
 
 
 

@@ -64,6 +64,70 @@ body, html {
     font-weight: bold;
 }
 
+.quick-keys-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 2 columns */
+    gap: 10px; /* Space between buttons */
+    margin-top: 20px; /* Space above the Quick Keys section */
+}
+
+.quick-key-button {
+    padding: 10px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 0.9em;
+    transition: background-color 0.2s ease;
+}
+
+.quick-key-button:hover {
+    background-color: #3c3c3c;
+}
+
+#quick-keys-settings {
+    margin-top: 20px;
+    padding: 10px;
+}
+
+.quick-key-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.quick-key-input {
+    padding: 8px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+    border: none;
+    font-size: 1em;
+    width: 100%;
+}
+
+.quick-key-input:focus {
+    outline: none;
+    background-color: #3c3c3c;
+}
+
+#saveQuickKeys {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+    width: 100%;
+}
+
+#saveQuickKeys:hover {
+    background-color: #3c3c3c;
+}
 
 
 .set-username-container {
@@ -74,7 +138,9 @@ body, html {
     z-index: 1; /* Ensure it appears above other elements */
 }
 
-.settings-button {
+
+#settings-button {
+    margin-top: 30px; /* Push the button to the bottom */
     padding: 10px;
     background-color: #2c2c2c;
     color: #e0e0e0;
@@ -83,11 +149,62 @@ body, html {
     text-align: center;
     font-size: 1em;
     transition: background-color 0.2s ease;
-    margin-top: 5px;
-    width: 100%;
 }
 
-.settings-button:hover {
+#settings-button:hover {
+    background-color: #3c3c3c;
+}
+
+#settings-modal .settings-button {
+    padding: 10px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+    width: 100%; /* Make all buttons the same width */
+    box-sizing: border-box; /* Ensure padding doesn't affect width */
+}
+
+
+#settings-modal .modal-content {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+    border-radius: 5px;
+    width: 80%;
+    max-width: 400px;
+    max-height: 80%;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    overflow: hidden;
+}
+
+#settings-modal .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center; /* Center-align buttons horizontally */
+}
+
+#settings-modal .settings-button {
+    padding: 10px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+    max-width: 300px; /* Optional: Limit button width for aesthetics */
+}
+
+#settings-modal .settings-button:hover {
     background-color: #3c3c3c;
 }
 
@@ -185,7 +302,9 @@ body, html {
 }
 
 .emoji-button {
-    padding: 10px;
+    width: 35px;
+    height: 35px;
+    padding: 0px;
     background-color: #3c3c3c;
     color: #e0e0e0;
     border-radius: 5px;
@@ -237,11 +356,12 @@ body, html {
 
 /* Messages */
 .chat-message {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: flex; /* Allows alignment of timestamp, sender, and text */
+    flex-direction: column; /* Ensure each part (timestamp, sender, message) is stacked */
     margin-bottom: 10px;
-    cursor: pointer; 
+    word-wrap: break-word; /* Enable wrapping for long words */
+    white-space: normal; /* Allow text to break into new lines */
+    overflow-wrap: anywhere; /* Ensure long words break correctly */
 }
 
 .chat-message img {
@@ -275,8 +395,11 @@ body, html {
 }
 
 .chat-text {
-    word-wrap: break-word;
+    word-wrap: break-word; /* Ensure long words wrap */
+    white-space: normal; /* Prevent text from staying on a single line */
+    overflow-wrap: anywhere; /* Break long words gracefully */
     font-size: 1em;
+    margin-top: 2px; /* Add a slight gap below the sender name */
 }
 
 /* Modal Styles */
@@ -331,6 +454,8 @@ body, html {
     max-height: calc(100% - 40px);
 }
 
+
+
 @media (max-width: 600px) {
     .emoji-button {
         display: none;
@@ -338,11 +463,39 @@ body, html {
 
     .chat-container {
         flex-direction: column;
+        width: 100%
+        
     }
 
     .toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
         width: 100%;
         height: auto;
+        background-color: #1a1a1a;
+        display: none; /* Hidden by default */
+        flex-direction: column;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .toolbar.active {
+        display: flex; /* Show toolbar when active */
+    }
+
+    .toggle-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background-color: #2c2c2c;
+        color: #e0e0e0;
+        text-align: center;
+        padding: 10px;
+        font-size: 1em;
+        cursor: pointer;
+        z-index: 1001; /* Above toolbar */
     }
 
     .chat-input-container {
@@ -352,9 +505,15 @@ body, html {
     }
 
     .main-chat {
+        flex: 1;
+        margin-top: 50px; /* Adjusted for the toggle-toolbar height */
+        overflow-y: auto;
         width: 100%;
-        height: calc(100vh - 150px); /* Account for the fixed input area */
-        margin-bottom: 0; /* No extra margin needed */
+    }
+
+    .chat-window {
+        flex: 1;
+        overflow-y: auto;
     }
 
     .channel-select,
@@ -367,5 +526,15 @@ body, html {
     .set-username-button {
         width: 100%;
         box-sizing: border-box;
+    }
+}
+
+@media (min-width: 601px) {
+    .toggle-toolbar {
+        display: none; /* Hide the menu button on larger screens */
+    }
+
+    .toolbar {
+        display: flex; /* Always show toolbar on larger screens */
     }
 }

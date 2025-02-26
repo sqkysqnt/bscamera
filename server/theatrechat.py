@@ -10,6 +10,8 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import render_template,Flask,request,jsonify, url_for
 import json
+from pywebpush import webpush, WebPushException
+import configparser
 
 # No imports from app.py to avoid circular dependencies
 
@@ -23,6 +25,14 @@ SCENES_FILE = 'scenes.json'
 BROADCAST_IP = None
 osc_client = None
 UPLOAD_FOLDER = None
+subscriptions = []
+SUBSCRIPTIONS_FILE = 'subscriptions.json'
+
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+public_key = config.get('Server', 'PublicKey')
+private_key = config.get('Server', 'PrivateKey')
 
 # Global variables for pending commands
 pending_commands = {}
@@ -59,6 +69,24 @@ def init_theatrechat(app, sockio, disp, osc_port, num_cameras_func):
 
     # Register socketio event handlers
     register_socketio_handlers()
+
+def load_subscriptions():
+    try:
+        if os.path.exists(SUBSCRIPTIONS_FILE):
+            with open(SUBSCRIPTIONS_FILE, 'r') as f:
+                return json.load(f)
+        else:
+            return []
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to load subscriptions file: {e}")
+        return []
+
+def save_subscriptions(subs):
+    try:
+        with open(SUBSCRIPTIONS_FILE, 'w') as f:
+            json.dump(subs, f, indent=4)
+    except IOError as e:
+        logging.error(f"Failed to save subscriptions: {e}")
 
 
 # Load channels from the JSON file
@@ -154,13 +182,34 @@ def register_socketio_handlers():
 
         # Do not call enforce_message_limit since we want to keep all messages
         # socketio emit including the new_message_id
-        socketio.emit('new_message', {
+        #socketio.emit('new_message', {
+        #    'id': new_message_id,
+        #    'timestamp': timestamp,
+        #    'sender_name': sender,
+        #    'message': message,
+        #    'channel': channel
+        #})
+
+        # Prepare the message data
+        message_data = {
             'id': new_message_id,
             'timestamp': timestamp,
             'sender_name': sender,
             'message': message,
             'channel': channel
-        })
+        }
+
+        # Broadcast to all connected clients
+        broadcast_message_to_clients(message_data)
+        # LOAD subscriptions from the file every time you need them
+        current_subscriptions = load_subscriptions()
+        for subscription in current_subscriptions:
+            send_push_notification(subscription, {
+                "title": f"{sender}",
+                "message": message,
+                "channel": channel,
+                "url": "/messages"
+            })
 
 
     @socketio.on('add_channel')
@@ -243,6 +292,22 @@ def check_for_replies(command_id):
                 # Max resend attempts reached, give up
                 del pending_commands[command_id]
                 logging.warning(f"Max resend attempts reached for command {pending_command['command']}")
+
+
+def send_push_notification(subscription_info, message):
+    try:
+        webpush(
+            subscription_info=subscription_info,
+            data=json.dumps(message),
+            vapid_private_key=private_key,
+            vapid_claims={
+                "sub": "mailto:your-email@example.com"
+            }
+        )
+        print("Push Notification Sent!")
+    except WebPushException as ex:
+        print("Push Notification Failed:", repr(ex))
+
 
 
 def get_broadcast_ip():
@@ -331,7 +396,8 @@ def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_a
     channel = address.split("/")[-1]
     is_me = (sender_name == SENDER_NAME)
 
-    # Check pending commands for replies if needed
+        # Check pending commands for replies if needed
+    # Insert the received message into the database
     with pending_commands_lock:
         pending_commands_items = list(pending_commands.items())
     for command_id, pending_command in pending_commands_items:
@@ -344,8 +410,7 @@ def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_a
                     logging.info(f"Received all expected replies for command {pending_command['command']}")
             break
 
-
-
+    # Insert the received message into the database
     conn = sqlite3.connect('messages.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -357,14 +422,33 @@ def osc_theatrechat_message_handler(address, sender_name, message_text, *extra_a
     new_message_id = cursor.lastrowid
     conn.close()
 
-    # Emit the new message to clients
-    socketio.emit('new_message', {
+    # Prepare message data for clients
+    message_data = {
         'id': new_message_id,
         'timestamp': timestamp,
         'sender_name': sender_name,
         'message': message_text,
         'channel': channel
-    })
+    }
+
+    # Emit the new message to connected clients
+    socketio.emit('new_message', message_data)
+
+    # Broadcast message to web clients
+    broadcast_message_to_clients(message_data)
+
+    # Load push notification subscriptions
+    current_subscriptions = load_subscriptions()
+
+    # Send a push notification to all subscribed users
+    for subscription in current_subscriptions:
+        send_push_notification(subscription, {
+            "title": f"New message from {sender_name}",
+            "message": message_text,
+            "channel": channel,
+            "url": "/messages"
+        })
+
 
 
 
@@ -405,7 +489,15 @@ def send_osc_message_chat(message, channel, sender):
     except Exception as e:
         logging.error(f"Failed to send OSC message: {e}")
 
-
+def broadcast_message_to_clients(message_data):
+    """
+    Broadcast a new message event to all connected clients for real-time updates.
+    """
+    try:
+        socketio.emit('new_message', message_data)
+        logging.info(f"Broadcasted message: {message_data}")
+    except Exception as e:
+        logging.error(f"Failed to broadcast message: {e}")
 
 def messages_page():
     conn = sqlite3.connect('messages.db')
