@@ -295,13 +295,14 @@ def check_for_replies(command_id):
 
 
 def send_push_notification(subscription_info, message):
+    print("Push Notification Entered")
     try:
         webpush(
             subscription_info=subscription_info,
             data=json.dumps(message),
             vapid_private_key=private_key,
             vapid_claims={
-                "sub": "mailto:your-email@example.com"
+                "sub": "mailto:admin@oscmessaging.com"
             }
         )
         print("Push Notification Sent!")
@@ -514,3 +515,4 @@ def messages_page():
     # Reverse to show from oldest to newest
     messages.reverse()
     return render_template('messages.html', messages=messages)
+
