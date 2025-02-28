@@ -1,0 +1,10 @@
+{
+    "x32_ip": "192.168.11.128",
+    "channel_targets": {},
+    "osc_messages": {
+        "mic_ready": "/micReady",
+        "mic_on": "/micOn",
+        "mic_off": "/micOff"
+    },
+    "enabled": true
+}
