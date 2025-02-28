@@ -1,4 +1,4 @@
-# plugins/x32_app/__init__.py
+# plugins/mixingstation/__init__.py
 
 import threading
 from plugins.plugin_interface import PluginInterface
