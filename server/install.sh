@@ -254,6 +254,46 @@ EOF"
   echo "   \\\\$(hostname -I | awk '{print $1}')\\Recordings"
 fi
 
+# ======================
+# Adjust Folder Permissions for Samba
+# ======================
+
+if [[ "$SMB_CHOICE" =~ ^[Yy]$ ]]; then
+  echo "Ensuring proper permissions for Samba share..."
+
+  RECORDING_DIR="$BSCAM_DIR/recordings"
+
+  # Ensure the recordings directory exists
+  mkdir -p "$RECORDING_DIR"
+
+  # Determine the absolute path to recordings
+  ABS_RECORDING_DIR=$(realpath "$RECORDING_DIR")
+
+  # Get the user's home directory dynamically
+  USER_HOME=$(eval echo ~$BSCAM_USER)
+
+  # Adjust permissions on the home directory (if necessary)
+  sudo chmod 755 "$USER_HOME"
+
+  # Adjust permissions for all parent directories leading to the recordings folder
+  PARENT_DIR="$ABS_RECORDING_DIR"
+  while [ "$PARENT_DIR" != "/" ]; do
+    sudo chmod 755 "$PARENT_DIR"
+    PARENT_DIR=$(dirname "$PARENT_DIR")
+  done
+
+  # Ensure the recordings directory is fully accessible
+  sudo chmod 777 "$ABS_RECORDING_DIR"
+  sudo chown -R nobody:nogroup "$ABS_RECORDING_DIR"
+
+  echo "Folder permissions set successfully!"
+
+  # Restart Samba to apply changes
+  sudo systemctl restart smbd
+  sudo systemctl restart nmbd
+
+  echo "Samba has been restarted. Your share should now be accessible."
+fi
 
 
 
