@@ -70,6 +70,8 @@ if [[ "$INSTALL_CHOICE" =~ ^[Nn]$ ]]; then
   exit 0
 fi
 
+sudo apt update && sudo apt install -y
+
 # ======================
 # Variables
 # ======================
