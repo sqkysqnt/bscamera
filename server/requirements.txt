@@ -11,3 +11,4 @@ urllib3
 werkzeug
 asyncio
 zeroconf
+pywebpush
