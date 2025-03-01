@@ -33,6 +33,11 @@ fi
 
 DOMAIN_NAME="$(echo "$DOMAIN_NAME" | xargs)"  # Trim whitespace
 
+read -p "5) Start bscamera after installation? (y/n) [y]: " START_CHOICE
+START_CHOICE=${START_CHOICE:-y}
+
+
+
 # Show final answers:
 echo
 echo "===== SUMMARY OF YOUR CHOICES ====="
@@ -43,6 +48,7 @@ echo "Use TLS via Certbot:          $TLS_CHOICE"
 if [[ -n "$DOMAIN_NAME" ]]; then
   echo "Domain:                       $DOMAIN_NAME"
 fi
+echo "Start BSCam after install:    $START_CHOICE"
 echo "==================================="
 echo
 
@@ -445,20 +451,43 @@ if [[ -z "$PUBKEY" || -z "$PRIVKEY" || "$PUBKEY" == "null" || "$PRIVKEY" == "nul
   exit 1
 fi
 
-# Ensure [Push] section in config.ini
+# Ensure [Push] and [Server] sections exist in config.ini
 if ! grep -q '^\[Push\]' "$CONFIG_FILE"; then
   echo "" >> "$CONFIG_FILE"
   echo "[Push]" >> "$CONFIG_FILE"
 fi
 
+if ! grep -q '^\[Server\]' "$CONFIG_FILE"; then
+  echo "" >> "$CONFIG_FILE"
+  echo "[Server]" >> "$CONFIG_FILE"
+fi
+
+# Remove any existing PublicKey/PrivateKey entries to avoid duplicates
 sed -i '/^PublicKey\s*=/d' "$CONFIG_FILE"
 sed -i '/^PrivateKey\s*=/d' "$CONFIG_FILE"
 
+# Add PublicKey and PrivateKey to both Push and Server sections
 echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
 echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
 
+echo "" >> "$CONFIG_FILE"
+echo "[Server]" >> "$CONFIG_FILE"
+echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
+echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
+
+
 echo
 echo "VAPID keys successfully added to config.ini"
+
+# ======================
+# Start program if requested
+# ======================
+
+if [[ "$START_CHOICE" =~ ^[Yy]$ ]]; then
+  echo "Starting bscamera..."
+  # Start the service here if needed
+  sudo systemctl start bscam || { echo "Failed to start BSCam service."; exit 1; }
+fi
 
 
 # ======================
