@@ -462,24 +462,16 @@ if ! grep -q '^\[Server\]' "$CONFIG_FILE"; then
   echo "[Server]" >> "$CONFIG_FILE"
 fi
 
-# Remove any existing PublicKey/PrivateKey entries to avoid duplicates
+# Remove existing PublicKey and PrivateKey lines to avoid duplicates
 sed -i '/^PublicKey\s*=/d' "$CONFIG_FILE"
 sed -i '/^PrivateKey\s*=/d' "$CONFIG_FILE"
 
 # Add PublicKey and PrivateKey to [Push] section
-echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
-echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
+sed -i '/^\[Push\]/a PublicKey = '"$PUBKEY"'\nPrivateKey = '"$PRIVKEY"'' "$CONFIG_FILE"
 
-# Add PublicKey and PrivateKey to [Server] section without duplicating it
-if grep -q '^\[Server\]' "$CONFIG_FILE"; then
-  # Ensure [Server] has PublicKey and PrivateKey
-  if ! grep -q '^PublicKey' "$CONFIG_FILE"; then
-    echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
-  fi
-  if ! grep -q '^PrivateKey' "$CONFIG_FILE"; then
-    echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
-  fi
-fi
+# Add PublicKey and PrivateKey to [Server] section, ensuring it is appended properly
+sed -i '/^\[Server\]/a PublicKey = '"$PUBKEY"'\nPrivateKey = '"$PRIVKEY"'' "$CONFIG_FILE"
+
 
 
 
@@ -492,9 +484,30 @@ echo "VAPID keys successfully added to config.ini"
 
 if [[ "$START_CHOICE" =~ ^[Yy]$ ]]; then
   echo "Starting bscamera..."
-  # Start the service here if needed
   sudo systemctl start bscam || { echo "Failed to start BSCam service."; exit 1; }
+
+  # Wait a few seconds to allow the service to start
+  sleep 3
+
+  # Check if the service is running
+  if systemctl is-active --quiet bscam; then
+    echo "BSCam service started successfully!"
+    echo ""
+    echo "======================================"
+    echo "How to Access BSCam:"
+    echo "--------------------------------------"
+    echo "Web Interface: http://$(hostname -I | awk '{print $1}')"
+    echo "Check Service Logs: sudo journalctl -u bscam -f"
+    echo "Restart the Service: sudo systemctl restart bscam"
+    echo "Stop the Service: sudo systemctl stop bscam"
+    echo "======================================"
+  else
+    echo "BSCam service failed to start. Check logs:"
+    echo "   sudo journalctl -u bscam -n 50 --no-pager"
+    exit 1
+  fi
 fi
+
 
 
 # ======================
