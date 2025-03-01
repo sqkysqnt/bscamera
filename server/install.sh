@@ -33,7 +33,10 @@ fi
 
 DOMAIN_NAME="$(echo "$DOMAIN_NAME" | xargs)"  # Trim whitespace
 
-read -p "5) Start bscamera after installation? (y/n) [y]: " START_CHOICE
+read -p "5) Share the recordings folder over the network via SMB? (y/n) [n]: " SMB_CHOICE
+SMB_CHOICE=${SMB_CHOICE:-n}
+
+read -p "6) Start bscamera after installation? (y/n) [y]: " START_CHOICE
 START_CHOICE=${START_CHOICE:-y}
 
 
@@ -48,6 +51,7 @@ echo "Use TLS via Certbot:          $TLS_CHOICE"
 if [[ -n "$DOMAIN_NAME" ]]; then
   echo "Domain:                       $DOMAIN_NAME"
 fi
+echo "Share recordings over SMB:     $SMB_CHOICE"
 echo "Start BSCam after install:    $START_CHOICE"
 echo "==================================="
 echo
@@ -70,7 +74,7 @@ if [[ "$INSTALL_CHOICE" =~ ^[Nn]$ ]]; then
   exit 0
 fi
 
-sudo apt update && sudo apt install -y
+sudo apt update && sudo apt upgrade -y
 
 # ======================
 # Variables
@@ -219,6 +223,38 @@ if [[ "$TLS_CHOICE" =~ ^[Yy]$ && -n "$DOMAIN_NAME" ]]; then
     fi
   fi
 fi
+
+# ======================
+# Are we doing the Samba thing?
+# ======================
+
+if [[ "$SMB_CHOICE" =~ ^[Yy]$ ]]; then
+  echo "Installing Samba..."
+  sudo apt-get install -y samba samba-common-bin || { echo "Failed to install Samba."; exit 1; }
+
+  SMB_CONF="/etc/samba/smb.conf"
+  RECORDING_DIR="$BSCAM_DIR/recordings"
+
+  echo "Creating Samba share configuration..."
+  sudo bash -c "cat <<EOF >> $SMB_CONF
+
+[Recordings]
+   path = $RECORDING_DIR
+   browseable = yes
+   read only = no
+   guest ok = yes
+   create mask = 0666
+   directory mask = 0777
+EOF"
+
+  echo "Restarting Samba service..."
+  sudo systemctl restart smbd || { echo "Failed to restart Samba."; exit 1; }
+
+  echo "Samba setup complete. You can access the recordings folder at:"
+  echo "   \\\\$(hostname -I | awk '{print $1}')\\Recordings"
+fi
+
+
 
 
 # ======================
