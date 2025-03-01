@@ -496,7 +496,7 @@ if [[ "$START_CHOICE" =~ ^[Yy]$ ]]; then
     echo "======================================"
     echo "How to Access BSCam:"
     echo "--------------------------------------"
-    echo "Web Interface: http://$(hostname -I | awk '{print $1}')"
+    echo "Web Interface: http://$(hostname -I | awk '{print $1}'):15000"
     echo "Check Service Logs: sudo journalctl -u bscam -f"
     echo "Restart the Service: sudo systemctl restart bscam"
     echo "Stop the Service: sudo systemctl stop bscam"
