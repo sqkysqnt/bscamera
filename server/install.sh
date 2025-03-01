@@ -51,7 +51,7 @@ echo "Use TLS via Certbot:          $TLS_CHOICE"
 if [[ -n "$DOMAIN_NAME" ]]; then
   echo "Domain:                       $DOMAIN_NAME"
 fi
-echo "Share recordings over SMB:     $SMB_CHOICE"
+echo "Share recordings over SMB:    $SMB_CHOICE"
 echo "Start BSCam after install:    $START_CHOICE"
 echo "==================================="
 echo
