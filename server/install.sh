@@ -466,14 +466,21 @@ fi
 sed -i '/^PublicKey\s*=/d' "$CONFIG_FILE"
 sed -i '/^PrivateKey\s*=/d' "$CONFIG_FILE"
 
-# Add PublicKey and PrivateKey to both Push and Server sections
+# Add PublicKey and PrivateKey to [Push] section
 echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
 echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
 
-echo "" >> "$CONFIG_FILE"
-echo "[Server]" >> "$CONFIG_FILE"
-echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
-echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
+# Add PublicKey and PrivateKey to [Server] section without duplicating it
+if grep -q '^\[Server\]' "$CONFIG_FILE"; then
+  # Ensure [Server] has PublicKey and PrivateKey
+  if ! grep -q '^PublicKey' "$CONFIG_FILE"; then
+    echo "PublicKey = $PUBKEY" >> "$CONFIG_FILE"
+  fi
+  if ! grep -q '^PrivateKey' "$CONFIG_FILE"; then
+    echo "PrivateKey = $PRIVKEY" >> "$CONFIG_FILE"
+  fi
+fi
+
 
 
 echo
