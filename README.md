@@ -1,5 +1,3 @@
-Need to create a better readme.
-
 
 ```
 git clone https://github.com/sqkysqnt/bscamera.git
