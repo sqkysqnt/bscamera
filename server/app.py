@@ -41,7 +41,7 @@ import configparser
 
 config = configparser.ConfigParser()
 config.read('config.ini')
-
+SUBSCRIPTIONS_FILE = 'subscriptions.json'
 # Load credentials from config.ini
 VALID_USERNAME = config.get('Authentication', 'Username', fallback='admin')
 VALID_PASSWORD = config.get('Authentication', 'Password', fallback='thisisthepassword123')
@@ -615,12 +615,12 @@ def start_osc_server():
 
 
 # Start the OSC server using Flask-SocketIO's background task
-# socketio.start_background_task(start_osc_server)
+    socketio.start_background_task(start_osc_server)
 
 # Start the OSC server in a separate thread
-# osc_thread = threading.Thread(target=start_osc_server)
-# osc_thread.daemon = True
-# osc_thread.start()
+    osc_thread = threading.Thread(target=start_osc_server)
+    osc_thread.daemon = True
+    osc_thread.start()
 
 
 
@@ -1154,8 +1154,29 @@ def start_recording(ip_address):
 
     return jsonify({'status': f'Started recording for camera {ip_address}', 'filename': filename})
 
+def load_subscriptions():
+    try:
+        if os.path.exists(SUBSCRIPTIONS_FILE):
+            with open(SUBSCRIPTIONS_FILE, 'r') as f:
+                return json.load(f)
+        else:
+            return []
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to load subscriptions file: {e}")
+        return []
 
+def save_subscriptions(subs):
+    try:
+        # Update timestamps for existing subscriptions
+        current_time = int(time.time())
+        for sub in subs:
+            if "lastUpdated" not in sub:
+                sub["lastUpdated"] = current_time  # Set initial timestamp
 
+        with open(SUBSCRIPTIONS_FILE, 'w') as f:
+            json.dump(subs, f, indent=4)
+    except IOError as e:
+        logging.error(f"Failed to save subscriptions: {e}")
 
 @app.route('/stop_recording/<ip_address>')
 def stop_recording(ip_address):
@@ -1203,25 +1224,43 @@ def subscribe():
 
     logging.debug(f"Subscription received: {subscription}")
 
+    current_time = int(time.time())
+
     # Load existing subscriptions
     current_subscriptions = load_subscriptions()
 
-    # Check for duplicates
-    if subscription in current_subscriptions:
-        return jsonify({"message": "Subscription already exists."}), 200
+    # Check if the subscription already exists
+    for sub in current_subscriptions:
+        if sub.get('endpoint') == subscription.get('endpoint'):
+            # Update the timestamp instead of adding a new entry
+            sub["lastUpdated"] = current_time
+            save_subscriptions(current_subscriptions)
+            return jsonify({"message": "Subscription updated!"}), 200
 
-    # Add the new subscription
+    # Add a new subscription with the current timestamp
+    subscription["lastUpdated"] = current_time
     current_subscriptions.append(subscription)
     save_subscriptions(current_subscriptions)
 
-    # Add this line to keep in-memory subscriptions up to date
-    global subscriptions
-    subscriptions = current_subscriptions
-
     return jsonify({"message": "Subscription successful!"}), 201
 
+def cleanup_old_subscriptions():
+    """Remove subscriptions older than 24 hours."""
+    current_time = int(time.time())
+    cutoff_time = current_time - (24 * 60 * 60)  # 24 hours ago
 
+    subscriptions = load_subscriptions()
+    filtered_subs = [sub for sub in subscriptions if sub.get("lastUpdated", 0) > cutoff_time]
 
+    if len(filtered_subs) != len(subscriptions):
+        save_subscriptions(filtered_subs)
+        logging.info("Old subscriptions removed.")
+
+# Run this function periodically
+def start_subscription_cleanup_task():
+    while True:
+        cleanup_old_subscriptions()
+        time.sleep(3600)  # Run every hour
 
 
 @socketio.on('disconnect')
@@ -1239,13 +1278,14 @@ if __name__ == '__main__':
     app.debug = True  # Enable debug mode
 
     # Only start the OSC server if this is the main process (not the reloader)
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        # Start the OSC server using Eventlet's green thread
-        socketio.start_background_task(start_osc_server)
+    #if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    #    # Start the OSC server using Eventlet's green thread
+    socketio.start_background_task(start_osc_server)
 
         # Start mDNS discovery in background
-        socketio.start_background_task(mdns_discovery_task)
+    socketio.start_background_task(mdns_discovery_task)
 
+    socketio.start_background_task(start_subscription_cleanup_task)
 
     try:
         socketio.run(
@@ -1256,4 +1296,3 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logging.info("Application interrupted by user. Shutting down...")
         cleanup()
-
