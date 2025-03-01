@@ -63,5 +63,6 @@ async function getChannelSubscriptionsFromIDB() {
     });
 }
 
-// Export functions for use in service-worker.js
-export { saveChannelSubscriptionsToIDB, getChannelSubscriptionsFromIDB };
+// Attach functions to self for usage in service-worker.js
+self.saveChannelSubscriptionsToIDB = saveChannelSubscriptionsToIDB;
+self.getChannelSubscriptionsFromIDB = getChannelSubscriptionsFromIDB;
