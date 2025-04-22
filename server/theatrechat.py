@@ -13,6 +13,8 @@ import json
 from pywebpush import webpush, WebPushException
 import configparser
 
+
+
 # No imports from app.py to avoid circular dependencies
 
 # Variables to be initialized
@@ -27,6 +29,8 @@ osc_client = None
 UPLOAD_FOLDER = None
 subscriptions = []
 SUBSCRIPTIONS_FILE = 'subscriptions.json'
+
+connected_mobile_apps = {}
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -69,6 +73,8 @@ def init_theatrechat(app, sockio, disp, osc_port, num_cameras_func):
 
     # Register socketio event handlers
     register_socketio_handlers()
+    
+
 
 def load_subscriptions():
     try:
@@ -212,6 +218,8 @@ def register_socketio_handlers():
             })
 
 
+
+
     @socketio.on('add_channel')
     def handle_add_channel(data):
         channel_name = data.get('channel_name', '').strip()
@@ -261,6 +269,61 @@ def register_socketio_handlers():
         logging.info(f"Current channels: {channels}")
         socketio.emit('update_channels', {"channels": channels})
 
+    @socketio.on('register_app')
+    def handle_register_app(data):
+        """
+        Mobile apps will connect via Socket.IO and emit 'register_app' with 
+        a JSON payload including device_id, username, etc.
+        """
+        device_id = data.get('device_id')
+        username = data.get('username', 'MobileUser')
+        
+        # Store this info in connected_mobile_apps keyed by the session ID
+        connected_mobile_apps[request.sid] = {
+            'device_id': device_id,
+            'username': username
+        }
+        
+        logging.info(f"Mobile app registered: SID={request.sid}, DeviceID={device_id}, Username={username}")
+
+        # You can respond/acknowledge if you like:
+        socketio.emit('app_registered', {
+            'sid': request.sid,
+            'device_id': device_id,
+            'username': username
+        }, room=request.sid)
+
+    # Optionally handle disconnect
+    @socketio.on('disconnect')
+    def handle_disconnect():
+        if request.sid in connected_mobile_apps:
+            logging.info(f"Mobile app disconnected: SID={request.sid}, device_info={connected_mobile_apps[request.sid]}")
+            del connected_mobile_apps[request.sid]
+        else:
+            logging.info(f"Socket disconnected: SID={request.sid}, not registered as mobile app.")
+
+    @socketio.on('get_recent_messages')
+    def handle_get_recent_messages():
+        conn = sqlite3.connect('messages.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, timestamp, sender_name, message, channel, me 
+            FROM messages ORDER BY id ASC LIMIT 100
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+
+        messages = [
+            {
+                'id': row[0],
+                'timestamp': row[1],
+                'sender_name': row[2],
+                'message': row[3],
+                'channel': row[4]
+            }
+            for row in rows
+        ]
+        socketio.emit('recent_messages', {'messages': messages}, room=request.sid)
 
 
 def check_for_replies(command_id):
@@ -295,14 +358,13 @@ def check_for_replies(command_id):
 
 
 def send_push_notification(subscription_info, message):
-    print("Push Notification Entered")
     try:
         webpush(
             subscription_info=subscription_info,
             data=json.dumps(message),
             vapid_private_key=private_key,
             vapid_claims={
-                "sub": "mailto:admin@oscmessaging.com"
+                "sub": "mailto:your-email@example.com"
             }
         )
         print("Push Notification Sent!")
