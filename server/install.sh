@@ -39,6 +39,8 @@ SMB_CHOICE=${SMB_CHOICE:-n}
 read -p "6) Start bscamera after installation? (y/n) [y]: " START_CHOICE
 START_CHOICE=${START_CHOICE:-y}
 
+read -p "7) Install Pi-hole ad blocker? (y/n) [n]: " PIHOLE_CHOICE
+PIHOLE_CHOICE=${PIHOLE_CHOICE:-n}
 
 
 # Show final answers:
@@ -53,6 +55,7 @@ if [[ -n "$DOMAIN_NAME" ]]; then
 fi
 echo "Share recordings over SMB:    $SMB_CHOICE"
 echo "Start BSCam after install:    $START_CHOICE"
+echo "Install Pi-hole:              $PIHOLE_CHOICE"
 echo "==================================="
 echo
 
@@ -586,6 +589,32 @@ if [[ "$START_CHOICE" =~ ^[Yy]$ ]]; then
   fi
 fi
 
+# ======================
+# Optional: Pi-hole Installation
+# ======================
+if [[ "$PIHOLE_CHOICE" =~ ^[Yy]$ ]]; then
+  echo "Installing Pi-hole..."
+
+  # Install dependencies
+  sudo apt-get update
+  sudo apt-get install -y git curl
+
+  # Clone and run installer
+  git clone --depth 1 https://github.com/pi-hole/pi-hole.git Pi-hole || {
+    echo "Failed to clone Pi-hole repository."
+    exit 1
+  }
+
+  cd "Pi-hole/automated install/" || {
+    echo "Failed to change directory to Pi-hole installer."
+    exit 1
+  }
+
+  sudo bash basic-install.sh
+  cd "$BSCAM_DIR" || echo "Warning: failed to return to BSCam directory."
+
+  echo "Pi-hole installation step completed."
+fi
 
 
 # ======================
