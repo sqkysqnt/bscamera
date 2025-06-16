@@ -654,7 +654,38 @@ if [[ "$PIHOLE_CHOICE" =~ ^[Yy]$ ]]; then
   cd "$BSCAM_DIR" || echo "Warning: failed to return to BSCam directory."
 
   echo "Pi-hole installation step completed."
+  
 fi
+
+# ======================
+# Add DNS override if Pi-hole installed and domain was provided
+# ======================
+if [[ "$PIHOLE_CHOICE" =~ ^[Yy]$ && -n "$DOMAIN_NAME" ]]; then
+  PIHOLE_DNS_FILE="/etc/pihole/custom.list"
+  DOMAIN_TARGET_IP="$IP_ADDRESS"
+
+  echo
+  echo "Adding Pi-hole DNS override: $DOMAIN_NAME -> $DOMAIN_TARGET_IP"
+
+  # Ensure the file exists and doesn't already contain the record
+  if [[ ! -f "$PIHOLE_DNS_FILE" ]]; then
+    sudo touch "$PIHOLE_DNS_FILE"
+  fi
+
+  if ! grep -q "$DOMAIN_NAME" "$PIHOLE_DNS_FILE"; then
+    echo "$DOMAIN_TARGET_IP $DOMAIN_NAME" | sudo tee -a "$PIHOLE_DNS_FILE" > /dev/null
+    echo "Added DNS record: $DOMAIN_NAME -> $DOMAIN_TARGET_IP"
+  else
+    echo "DNS override for $DOMAIN_NAME already exists."
+  fi
+
+  # Restart Pi-hole DNS service
+  echo "Restarting Pi-hole DNS to apply change..."
+  sudo systemctl restart pihole-FTL
+  echo "DNS override applied."
+fi
+
+
 
 
 # ======================
