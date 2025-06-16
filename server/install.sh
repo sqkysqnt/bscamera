@@ -92,6 +92,9 @@ if [[ "$INSTALL_CHOICE" =~ ^[Nn]$ ]]; then
 fi
 
 sudo apt update && sudo apt upgrade -y
+PY_VER=$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}-dev")')
+sudo apt-get install -y "$PY_VER"
+
 
 # ======================
 # Variables
