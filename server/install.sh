@@ -39,6 +39,20 @@ SMB_CHOICE=${SMB_CHOICE:-n}
 read -p "6) Start bscamera after installation? (y/n) [y]: " START_CHOICE
 START_CHOICE=${START_CHOICE:-y}
 
+read -p "7) Install Pi-hole ad blocker? (y/n) [n]: " PIHOLE_CHOICE
+PIHOLE_CHOICE=${PIHOLE_CHOICE:-n}
+
+read -p "8) Default username for BSCam access [admin]: " AUTH_USERNAME
+AUTH_USERNAME=${AUTH_USERNAME:-admin}
+
+read -s -p "9) Default password for BSCam access [required]: " AUTH_PASSWORD
+echo
+if [[ -z "$AUTH_PASSWORD" ]]; then
+  echo "Password is required. Exiting."
+  exit 1
+fi
+
+
 
 
 # Show final answers:
@@ -53,6 +67,9 @@ if [[ -n "$DOMAIN_NAME" ]]; then
 fi
 echo "Share recordings over SMB:    $SMB_CHOICE"
 echo "Start BSCam after install:    $START_CHOICE"
+echo "Install Pi-hole:              $PIHOLE_CHOICE"
+echo "Authentication Username:      $AUTH_USERNAME"
+echo "Authentication Password:      [hidden]"
 echo "==================================="
 echo
 
@@ -115,6 +132,15 @@ DefaultChannel = cameras
 Directory = recordings
 EOF
 fi
+
+# Add [Authentication] section
+if ! grep -q '^\[Authentication\]' "$CONFIG_FILE"; then
+  echo "" >> "$CONFIG_FILE"
+  echo "[Authentication]" >> "$CONFIG_FILE"
+  echo "Username = $AUTH_USERNAME" >> "$CONFIG_FILE"
+  echo "Password = $AUTH_PASSWORD" >> "$CONFIG_FILE"
+fi
+
 
 # Ensure [Server] section
 if ! grep -q '^\[Server\]' "$CONFIG_FILE"; then
@@ -586,6 +612,32 @@ if [[ "$START_CHOICE" =~ ^[Yy]$ ]]; then
   fi
 fi
 
+# ======================
+# Optional: Pi-hole Installation
+# ======================
+if [[ "$PIHOLE_CHOICE" =~ ^[Yy]$ ]]; then
+  echo "Installing Pi-hole..."
+
+  # Install dependencies
+  sudo apt-get update
+  sudo apt-get install -y git curl
+
+  # Clone and run installer
+  git clone --depth 1 https://github.com/pi-hole/pi-hole.git Pi-hole || {
+    echo "Failed to clone Pi-hole repository."
+    exit 1
+  }
+
+  cd "Pi-hole/automated install/" || {
+    echo "Failed to change directory to Pi-hole installer."
+    exit 1
+  }
+
+  sudo bash basic-install.sh
+  cd "$BSCAM_DIR" || echo "Warning: failed to return to BSCam directory."
+
+  echo "Pi-hole installation step completed."
+fi
 
 
 # ======================
