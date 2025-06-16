@@ -106,9 +106,21 @@ HOSTNAME=$(hostname)
 IP_ADDRESS=$(hostname -I | awk '{print $1}')  # First IP address
 CONFIG_FILE="$BSCAM_DIR/config.ini"
 
+sudo apt-get install -y git curl build-essential
+
+
 # ======================
 # Step 1: Python venv
 # ======================
+
+# Ensure python3-venv is installed (required for venv to work)
+echo "Ensuring python3-venv is installed..."
+sudo apt-get install -y python3-venv || {
+  echo "Failed to install python3-venv. Exiting."
+  exit 1
+}
+
+
 echo "Creating a Python virtual environment..."
 python3 -m venv venv || { echo "Failed to create virtual environment."; exit 1; }
 source venv/bin/activate
