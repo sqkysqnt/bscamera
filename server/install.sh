@@ -94,7 +94,9 @@ fi
 sudo apt update && sudo apt upgrade -y
 PY_VER=$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}-dev")')
 sudo apt-get install -y "$PY_VER"
-
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v
 
 # ======================
 # Variables
