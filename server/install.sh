@@ -90,7 +90,7 @@ if [[ "$INSTALL_CHOICE" =~ ^[Nn]$ ]]; then
   echo "Installation aborted."
   exit 0
 fi
-
+sudo apt-get -o Dpkg::Options::="--force-confnew" upgrade -y
 sudo apt update && sudo apt upgrade -y
 PY_VER=$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}-dev")')
 sudo apt-get install -y "$PY_VER"
@@ -179,93 +179,107 @@ fi
 echo "UseTLS = $USE_TLS_LOWER" >> "$CONFIG_FILE"
 
 # ======================
-# Step 3: Attempt Certbot (if TLS chosen)
+# Step 3: Handle TLS Certificate Setup
 # ======================
+
 CERT_PATH_FULLCHAIN=""
 CERT_PATH_PRIVKEY=""
-MANUAL_CERT_CHOICE=""
+USE_TLS_LOWER="no"
 
 if [[ "$TLS_CHOICE" =~ ^[Yy]$ && -n "$DOMAIN_NAME" ]]; then
-  echo "Installing Certbot..."
-  sudo apt-get update
-  sudo apt-get install -y certbot python3-certbot-nginx || {
-    echo "Failed to install Certbot. We will have to handle certs manually."
-  }
+  echo
+  echo "How would you like to obtain TLS certificates for '$DOMAIN_NAME'?"
+  echo "  1) Auto via Certbot and NGINX (requires public access on port 80)"
+  echo "  2) Manual DNS challenge (you must add a TXT record)"
+  echo "  3) Generate local self-signed cert (no push notifications)"
+  echo "  4) Disable TLS (HTTP only)"
+  read -p "Choose 1/2/3/4 [1]: " TLS_METHOD
+  TLS_METHOD=${TLS_METHOD:-1}
 
-  echo "Attempting to obtain certificates for $DOMAIN_NAME via Certbot..."
-  # We'll only run certbot if it is installed
-  if command -v certbot &> /dev/null; then
-    # --force-renewal can be added if you want to always request a new cert
-    sudo certbot certonly --nginx -d "$DOMAIN_NAME" || {
-      echo "Certbot failed to obtain certificate. We'll handle certs manually."
-    }
+  sudo apt-get update
+  sudo apt-get install -y certbot python3-certbot-nginx
+
+  case "$TLS_METHOD" in
+    "1")
+      echo "Attempting automatic certificate issuance via Certbot and NGINX..."
+      sudo certbot certonly --nginx -d "$DOMAIN_NAME" || {
+        echo "Automatic certificate issuance failed."
+      }
+      ;;
+
+    "2")
+      read -p "Enter your email address for Let's Encrypt (required): " EMAIL
+      EMAIL=${EMAIL:-admin@$DOMAIN_NAME}
+      echo
+      echo "You will be asked to create a TXT DNS record for '_acme-challenge.$DOMAIN_NAME'"
+      echo "Wait for DNS to propagate before continuing."
+      echo "Starting DNS-01 manual challenge..."
+      sudo certbot certonly \
+        --manual \
+        --preferred-challenges dns \
+        --email "$EMAIL" \
+        --agree-tos \
+        --no-eff-email \
+        -d "$DOMAIN_NAME" || {
+          echo "Manual DNS challenge failed."
+        }
+      ;;
+
+    "3")
+      echo "Generating a self-signed certificate in $BSCAM_DIR/certs..."
+      mkdir -p "$BSCAM_DIR/certs"
+      openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout "$BSCAM_DIR/certs/key.pem" \
+        -out "$BSCAM_DIR/certs/cert.pem" \
+        -subj "/C=US/ST=State/L=City/O=Org/OU=Unit/CN=$DOMAIN_NAME"
+      CERT_PATH_FULLCHAIN="$BSCAM_DIR/certs/cert.pem"
+      CERT_PATH_PRIVKEY="$BSCAM_DIR/certs/key.pem"
+      USE_TLS_LOWER="yes"
+      echo "Self-signed cert created."
+      ;;
+
+    "4"|*)
+      echo "TLS has been disabled. Continuing with HTTP only."
+      USE_TLS_LOWER="no"
+      ;;
+  esac
+
+  # Try to locate LetsEncrypt certs (if any)
+  if [[ -z "$CERT_PATH_FULLCHAIN" && -d "/etc/letsencrypt/live/$DOMAIN_NAME" ]]; then
+    if [[ -f "/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem" && -f "/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem" ]]; then
+      CERT_PATH_FULLCHAIN="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
+      CERT_PATH_PRIVKEY="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
+      USE_TLS_LOWER="yes"
+      echo "Using certificates from /etc/letsencrypt/live/$DOMAIN_NAME/"
+    fi
   fi
 
-  # Try the *default* path first
-  CERT_PATH_FULLCHAIN="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
-  CERT_PATH_PRIVKEY="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
-
-  if [[ -f "$CERT_PATH_FULLCHAIN" && -f "$CERT_PATH_PRIVKEY" ]]; then
-    echo "Found certs at $CERT_PATH_FULLCHAIN and $CERT_PATH_PRIVKEY."
-    echo "We'll use these for Nginx."
-  else
-    # If the default folder doesn't exist, let's see if there's a folder
-    # that starts with domain (like domain-0001)
-    POSSIBLE_DIR=$(ls -d /etc/letsencrypt/live/"${DOMAIN_NAME}"* 2>/dev/null | head -n 1)
-    if [[ -n "$POSSIBLE_DIR" ]]; then
-      # Check for fullchain & privkey
-      if [[ -f "$POSSIBLE_DIR/fullchain.pem" && -f "$POSSIBLE_DIR/privkey.pem" ]]; then
-        CERT_PATH_FULLCHAIN="$POSSIBLE_DIR/fullchain.pem"
-        CERT_PATH_PRIVKEY="$POSSIBLE_DIR/privkey.pem"
-        echo "Found certs in $POSSIBLE_DIR. We'll use those for Nginx."
-      fi
-    fi
-
-    # If still not found, prompt the user for manual path or fallback
-    if [[ ! -f "$CERT_PATH_FULLCHAIN" || ! -f "$CERT_PATH_PRIVKEY" ]]; then
-      echo
-      echo "We could not find certificates in /etc/letsencrypt/live/$DOMAIN_NAME or a similar folder."
-      echo "Please choose how to proceed:"
-      echo "  1) Enter a custom path to fullchain.pem and privkey.pem"
-      echo "  2) Generate local self-signed cert (Push Notifications will NOT work)"
-      echo "  3) Disable TLS (switch to HTTP only)"
-      read -p "Enter 1/2/3 [3]: " MANUAL_CERT_CHOICE
-      MANUAL_CERT_CHOICE=${MANUAL_CERT_CHOICE:-3}
-
-      case "$MANUAL_CERT_CHOICE" in
-        "1")
-          echo
-          read -p "Path to fullchain (combined certificate): " CERT_PATH_FULLCHAIN
-          read -p "Path to private key (privkey): " CERT_PATH_PRIVKEY
-          if [[ ! -f "$CERT_PATH_FULLCHAIN" || ! -f "$CERT_PATH_PRIVKEY" ]]; then
-            echo "The paths you entered do not exist. Switching to HTTP only."
-            USE_TLS_LOWER="no"
-          fi
-          ;;
-        "2")
-          echo
-          echo "Generating a self-signed certificate in $BSCAM_DIR/certs."
-          mkdir -p "$BSCAM_DIR/certs"
-          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout "$BSCAM_DIR/certs/key.pem" \
-            -out "$BSCAM_DIR/certs/cert.pem" \
-            -subj "/C=US/ST=State/L=City/O=Organization/OU=OrgUnit/CN=$DOMAIN_NAME"
-          CERT_PATH_FULLCHAIN="$BSCAM_DIR/certs/cert.pem"
-          CERT_PATH_PRIVKEY="$BSCAM_DIR/certs/key.pem"
-          echo "Self-signed cert created. (Push notifications won't work with self-signed)."
-          ;;
-        "3"|"")
-          echo "Disabling TLS."
-          USE_TLS_LOWER="no"
-          ;;
-        *)
-          echo "Unrecognized choice. Defaulting to HTTP only."
-          USE_TLS_LOWER="no"
-          ;;
-      esac
-    fi
+  # If nothing was found, fallback to HTTP
+  if [[ "$USE_TLS_LOWER" == "yes" && ( ! -f "$CERT_PATH_FULLCHAIN" || ! -f "$CERT_PATH_PRIVKEY" ) ]]; then
+    echo "TLS was requested but valid certs were not found. Falling back to HTTP only."
+    USE_TLS_LOWER="no"
   fi
 fi
+
+# ======================
+# Update config.ini TLS settings
+# ======================
+# Ensure [Server] section exists
+if ! grep -q '^\[Server\]' "$CONFIG_FILE"; then
+  echo "" >> "$CONFIG_FILE"
+  echo "[Server]" >> "$CONFIG_FILE"
+fi
+
+# Remove old values
+sed -i '/^UseTLS\s*=/d' "$CONFIG_FILE"
+sed -i '/^Domain\s*=/d' "$CONFIG_FILE"
+
+if [[ "$USE_TLS_LOWER" == "yes" && -n "$DOMAIN_NAME" ]]; then
+  echo "Domain = $DOMAIN_NAME" >> "$CONFIG_FILE"
+fi
+
+echo "UseTLS = $USE_TLS_LOWER" >> "$CONFIG_FILE"
+
 
 # ======================
 # Are we doing the Samba thing?
