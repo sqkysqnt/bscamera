@@ -718,6 +718,7 @@ if [[ "$PIHOLE_CHOICE" =~ ^[Yy]$ && -n "$DOMAIN_NAME" ]]; then
 fi
 
 
+sudo chmod -R 775 static/uploads
 
 
 # ======================
