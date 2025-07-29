@@ -262,6 +262,40 @@ def register_socketio_handlers():
         socketio.emit('update_channels', {"channels": channels})
 
 
+    @socketio.on('get_recent_messages')
+    def handle_get_recent_messages():
+        try:
+            conn = sqlite3.connect('messages.db')
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, timestamp, sender_name, message, channel, me 
+                FROM messages
+                ORDER BY id DESC
+                LIMIT 50
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+    
+            # Format the messages in reverse order (oldest first)
+            messages = [
+                {
+                    "id": row[0],
+                    "timestamp": row[1],
+                    "sender_name": row[2],
+                    "message": row[3],
+                    "channel": row[4],
+                    "me": bool(row[5])
+                }
+                for row in reversed(rows)
+            ]
+    
+            # Emit only to the requesting client
+            socketio.emit('recent_messages', {'messages': messages}, to=request.sid)
+            logging.info(f"Sent {len(messages)} recent messages to {request.sid}")
+        except Exception as e:
+            logging.error(f"Error handling get_recent_messages: {e}")
+
+
 
 def check_for_replies(command_id):
     with pending_commands_lock:
