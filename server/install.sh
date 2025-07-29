@@ -187,77 +187,89 @@ CERT_PATH_PRIVKEY=""
 USE_TLS_LOWER="no"
 
 if [[ "$TLS_CHOICE" =~ ^[Yy]$ && -n "$DOMAIN_NAME" ]]; then
-  echo
-  echo "How would you like to obtain TLS certificates for '$DOMAIN_NAME'?"
-  echo "  1) Auto via Certbot and NGINX (requires public access on port 80)"
-  echo "  2) Manual DNS challenge (you must add a TXT record)"
-  echo "  3) Generate local self-signed cert (no push notifications)"
-  echo "  4) Disable TLS (HTTP only)"
-  read -p "Choose 1/2/3/4 [1]: " TLS_METHOD
-  TLS_METHOD=${TLS_METHOD:-1}
 
-  sudo apt-get update
-  sudo apt-get install -y certbot python3-certbot-nginx
+  # Check if certs already exist
+  EXISTING_CERT_DIR="/etc/letsencrypt/live/$DOMAIN_NAME"
+  if [[ -f "$EXISTING_CERT_DIR/fullchain.pem" && -f "$EXISTING_CERT_DIR/privkey.pem" ]]; then
+    echo
+    echo "✅ Found existing Let's Encrypt certificate for $DOMAIN_NAME."
+    CERT_PATH_FULLCHAIN="$EXISTING_CERT_DIR/fullchain.pem"
+    CERT_PATH_PRIVKEY="$EXISTING_CERT_DIR/privkey.pem"
+    USE_TLS_LOWER="yes"
+  else
+    echo
+    echo "No existing certificates found for '$DOMAIN_NAME'."
+    echo "How would you like to obtain TLS certificates?"
+    echo "  1) Auto via Certbot and NGINX (requires public access on port 80)"
+    echo "  2) Manual DNS challenge (you must add a TXT record)"
+    echo "  3) Generate local self-signed cert (no push notifications)"
+    echo "  4) Disable TLS (HTTP only)"
+    read -p "Choose 1/2/3/4 [1]: " TLS_METHOD
+    TLS_METHOD=${TLS_METHOD:-1}
 
-  case "$TLS_METHOD" in
-    "1")
-      echo "Attempting automatic certificate issuance via Certbot and NGINX..."
-      sudo certbot certonly --nginx -d "$DOMAIN_NAME" || {
-        echo "Automatic certificate issuance failed."
-      }
-      ;;
+    sudo apt-get update
+    sudo apt-get install -y certbot python3-certbot-nginx
 
-    "2")
-      read -p "Enter your email address for Let's Encrypt (required): " EMAIL
-      EMAIL=${EMAIL:-admin@$DOMAIN_NAME}
-      echo
-      echo "You will be asked to create a TXT DNS record for '_acme-challenge.$DOMAIN_NAME'"
-      echo "Wait for DNS to propagate before continuing."
-      echo "Starting DNS-01 manual challenge..."
-      sudo certbot certonly \
-        --manual \
-        --preferred-challenges dns \
-        --email "$EMAIL" \
-        --agree-tos \
-        --no-eff-email \
-        -d "$DOMAIN_NAME" || {
-          echo "Manual DNS challenge failed."
+    case "$TLS_METHOD" in
+      "1")
+        echo "Attempting automatic certificate issuance via Certbot and NGINX..."
+        sudo certbot certonly --nginx -d "$DOMAIN_NAME" || {
+          echo "Automatic certificate issuance failed."
         }
-      ;;
+        ;;
 
-    "3")
-      echo "Generating a self-signed certificate in $BSCAM_DIR/certs..."
-      mkdir -p "$BSCAM_DIR/certs"
-      openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout "$BSCAM_DIR/certs/key.pem" \
-        -out "$BSCAM_DIR/certs/cert.pem" \
-        -subj "/C=US/ST=State/L=City/O=Org/OU=Unit/CN=$DOMAIN_NAME"
-      CERT_PATH_FULLCHAIN="$BSCAM_DIR/certs/cert.pem"
-      CERT_PATH_PRIVKEY="$BSCAM_DIR/certs/key.pem"
-      USE_TLS_LOWER="yes"
-      echo "Self-signed cert created."
-      ;;
+      "2")
+        read -p "Enter your email address for Let's Encrypt (required): " EMAIL
+        EMAIL=${EMAIL:-admin@$DOMAIN_NAME}
+        echo
+        echo "You will be asked to create a TXT DNS record for '_acme-challenge.$DOMAIN_NAME'"
+        echo "Wait for DNS to propagate before continuing."
+        echo "Starting DNS-01 manual challenge..."
+        sudo certbot certonly \
+          --manual \
+          --preferred-challenges dns \
+          --email "$EMAIL" \
+          --agree-tos \
+          --no-eff-email \
+          -d "$DOMAIN_NAME" || {
+            echo "Manual DNS challenge failed."
+          }
+        ;;
 
-    "4"|*)
-      echo "TLS has been disabled. Continuing with HTTP only."
-      USE_TLS_LOWER="no"
-      ;;
-  esac
+      "3")
+        echo "Generating a self-signed certificate in $BSCAM_DIR/certs..."
+        mkdir -p "$BSCAM_DIR/certs"
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout "$BSCAM_DIR/certs/key.pem" \
+          -out "$BSCAM_DIR/certs/cert.pem" \
+          -subj "/C=US/ST=State/L=City/O=Org/OU=Unit/CN=$DOMAIN_NAME"
+        CERT_PATH_FULLCHAIN="$BSCAM_DIR/certs/cert.pem"
+        CERT_PATH_PRIVKEY="$BSCAM_DIR/certs/key.pem"
+        USE_TLS_LOWER="yes"
+        echo "Self-signed cert created."
+        ;;
 
-  # Try to locate LetsEncrypt certs (if any)
-  if [[ -z "$CERT_PATH_FULLCHAIN" && -d "/etc/letsencrypt/live/$DOMAIN_NAME" ]]; then
-    if [[ -f "/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem" && -f "/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem" ]]; then
-      CERT_PATH_FULLCHAIN="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
-      CERT_PATH_PRIVKEY="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
-      USE_TLS_LOWER="yes"
-      echo "Using certificates from /etc/letsencrypt/live/$DOMAIN_NAME/"
+      "4"|*)
+        echo "TLS has been disabled. Continuing with HTTP only."
+        USE_TLS_LOWER="no"
+        ;;
+    esac
+
+    # Re-check for LetsEncrypt certs (in case they were created now)
+    if [[ -z "$CERT_PATH_FULLCHAIN" && -d "$EXISTING_CERT_DIR" ]]; then
+      if [[ -f "$EXISTING_CERT_DIR/fullchain.pem" && -f "$EXISTING_CERT_DIR/privkey.pem" ]]; then
+        CERT_PATH_FULLCHAIN="$EXISTING_CERT_DIR/fullchain.pem"
+        CERT_PATH_PRIVKEY="$EXISTING_CERT_DIR/privkey.pem"
+        USE_TLS_LOWER="yes"
+        echo "✅ Certificates have been successfully created."
+      fi
     fi
-  fi
 
-  # If nothing was found, fallback to HTTP
-  if [[ "$USE_TLS_LOWER" == "yes" && ( ! -f "$CERT_PATH_FULLCHAIN" || ! -f "$CERT_PATH_PRIVKEY" ) ]]; then
-    echo "TLS was requested but valid certs were not found. Falling back to HTTP only."
-    USE_TLS_LOWER="no"
+    # If nothing was found, fallback to HTTP
+    if [[ "$USE_TLS_LOWER" == "yes" && ( ! -f "$CERT_PATH_FULLCHAIN" || ! -f "$CERT_PATH_PRIVKEY" ) ]]; then
+      echo "TLS was requested but valid certs were not found. Falling back to HTTP only."
+      USE_TLS_LOWER="no"
+    fi
   fi
 fi
 
@@ -279,6 +291,7 @@ if [[ "$USE_TLS_LOWER" == "yes" && -n "$DOMAIN_NAME" ]]; then
 fi
 
 echo "UseTLS = $USE_TLS_LOWER" >> "$CONFIG_FILE"
+
 
 
 # ======================
@@ -433,6 +446,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         client_max_body_size 50M;
+
     }
 }
 EOF
@@ -572,6 +586,7 @@ fi
 # ======================
 echo
 echo "Installing web-push globally (for push notifications)..."
+sudo apt-get install -y jq
 sudo apt-get install -y npm jq  # also install jq
 sudo npm install -g web-push || { echo "Failed to install web-push."; exit 1; }
 
