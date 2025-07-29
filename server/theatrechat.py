@@ -252,10 +252,6 @@ def register_socketio_handlers():
             logging.warning(f"Channel '{channel_name}' does not exist.")
             socketio.emit('error', {"message": f"Channel '{channel_name}' does not exist"})
 
-
-
-
-
     @socketio.on('get_channels')
     def handle_get_channels():
         logging.info(f"Current channels: {channels}")
