@@ -719,7 +719,7 @@ fi
 
 
 sudo chmod -R 775 static/uploads
-
+sudo chmod -R 775 channels.json
 
 # ======================
 # Done
