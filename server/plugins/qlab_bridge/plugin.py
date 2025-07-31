@@ -10,6 +10,7 @@ import logging
 import json
 import os
 import socket
+import time
 
 qlab_bp = Blueprint('qlab_plugin', __name__, template_folder='templates')
 
@@ -21,6 +22,7 @@ default_config = {
     "local_port": 53001,
     "chat_channel": "qlab",
     "chat_sender": "qlab",
+    "enable_theatrechat": True,
     "filters": ["go", "start", "stop"]
 }
 
@@ -47,9 +49,16 @@ def save_config():
         with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=4)
 
+
 @qlab_bp.route('/')
 def qlab_ui():
-    return render_template('qlab_interface.html', config=config)
+    overlay_path = os.path.join(os.path.dirname(__file__), 'templates', 'qlab_overlay.html')
+    overlay_content = ""
+    if os.path.exists(overlay_path):
+        with open(overlay_path, 'r') as f:
+            overlay_content = f.read()
+    return render_template('qlab_interface.html', config=config, overlay_content=overlay_content)
+
 
 @qlab_bp.route('/update_config', methods=['POST'])
 def update_config():
@@ -58,6 +67,7 @@ def update_config():
         config['qlab_port'] = int(request.form['qlab_port'])
         config['chat_channel'] = request.form['chat_channel']
         config['chat_sender'] = request.form['chat_sender']
+        config['enable_theatrechat'] = request.form['enable_theatrechat']
         config['filters'] = request.form.getlist('filters')
         save_config()
 
@@ -75,9 +85,30 @@ def qlab_overlay():
 def get_latest_cue():
     plugin = getattr(qlab_bp, 'plugin_instance', None)
     if plugin:
-        return jsonify({"cue": plugin.latest_cue})
-    return jsonify({"cue": ""})
+        return jsonify({
+            "cue": plugin.latest_cue,
+            "light_active": plugin.light_active_cue,
+            "light_pending": plugin.light_pending_cue
+        })
+    return jsonify({
+        "cue": "",
+        "light_active": "",
+        "light_pending": ""
+    })  
 
+
+@qlab_bp.route('/save_overlay', methods=['POST'])
+def save_overlay():
+    data = request.get_json()
+    html_content = data.get('html', '')
+    try:
+        overlay_path = os.path.join(os.path.dirname(__file__), 'templates', 'qlab_overlay.html')
+        with open(overlay_path, 'w') as f:
+            f.write(html_content)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logging.error(f"[QLAB] Failed to save overlay: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 
@@ -92,6 +123,14 @@ class QlabPlugin(PluginInterface):
         self.latest_cue = ""
         self.listen_thread = None
         self.listen_running = False
+        self.current_cue_data = {}  # Initialize cue data storage
+        self.pending_cue = None     # Store pending cue for reply handling
+        self.active_cues = {}  # Track running cues by uniqueID
+        self.current_timer = None  # Track the active timer
+        self.active_cue_id = None  # Track currently displayed cue
+        self.light_active_cue = ""
+        self.light_pending_cue = ""
+
 
     def start_listen_heartbeat(self):
         def send_listen_forever():
@@ -110,6 +149,13 @@ class QlabPlugin(PluginInterface):
         self.listen_thread.start()
         logging.info("[QLAB] Started /listen heartbeat thread")
 
+    def clear_overlay(self):
+        """Safely clear the overlay and cancel any timers"""
+        if self.current_timer:
+            self.current_timer.cancel()
+            self.current_timer = None
+        self.latest_cue = ""
+        self.active_cue_id = None
 
 
     def register(self, app, socketio=None, dispatcher=None):
@@ -156,7 +202,9 @@ class QlabPlugin(PluginInterface):
             return
 
         dispatcher = Dispatcher()
+        dispatcher.map("/reply/*", self.handle_reply)
         dispatcher.set_default_handler(self.handle_osc)
+
 
         try:
             self.server = ThreadingOSCUDPServer(("0.0.0.0", config["local_port"]), dispatcher)
@@ -180,41 +228,140 @@ class QlabPlugin(PluginInterface):
         if self.listen_thread:
             self.listen_thread.join(timeout=1)
 
+    def set_cue_timer(self, msg_str, cue_id, cue_type):
+        """Handle cue display timing based on cue type"""
+        # First clear any existing overlay/timer
+        self.clear_overlay()
+        
+        # Set the new cue
+        self.latest_cue = msg_str
+        self.active_cue_id = cue_id
+        
+        if cue_type in ["Audio", "Video", "Fade"]:
+            # For timed cues, request duration
+            try:
+                self.client.send_message(f"/cue/{cue_id}/duration", ["get"])
+                logging.debug(f"[QLAB] Requested duration for cue {cue_id}")
+            except Exception as e:
+                logging.error(f"[QLAB] Failed to request duration: {e}")
+                # Fallback to default duration
+                self.set_fallback_timer()
+        else:
+            # For Group/other cues, just set fallback timer
+            self.set_fallback_timer()
+
+    def set_fallback_timer(self, duration=10.0):
+        """Set a fallback timer to clear overlay"""
+        def clear():
+            if self.current_timer:  # Only clear if this timer is still active
+                self.clear_overlay()
+                logging.debug("[QLAB] Cleared overlay after fallback timeout")
+        
+        self.current_timer = threading.Timer(duration, clear)
+        self.current_timer.start()            
+
+    def handle_reply(self, address, *args):
+        """Handle duration replies from QLab"""
+        try:
+            if "/duration" in address and self.active_cue_id:
+                try:
+                    # Handle JSON error responses
+                    if args and isinstance(args[0], str) and args[0].startswith('{'):
+                        try:
+                            error_data = json.loads(args[0])
+                            if error_data.get("status") == "error":
+                                logging.debug(f"[QLAB] QLab error response: {error_data}")
+                                return  # Keep existing timer
+                        except json.JSONDecodeError:
+                            pass  # Not JSON, continue
+                    
+                    # Process duration value
+                    duration = float(args[0])
+                    logging.debug(f"[QLAB] Received duration: {duration} seconds")
+                    
+                    # Replace fallback timer with actual duration
+                    if self.current_timer:
+                        self.current_timer.cancel()
+                    self.set_fallback_timer(duration)
+                    
+                except (ValueError, IndexError) as e:
+                    logging.error(f"[QLAB] Invalid duration reply: {e}")
+                except Exception as e:
+                    logging.error(f"[QLAB] Error processing reply: {e}")
+        except Exception as e:
+            logging.error(f"[QLAB] Reply handler error: {e}")
+
+    def is_cue_running(self, cue_id):
+        """Check if a cue is currently running"""
+        return cue_id in self.active_cues
+
 
     def handle_osc(self, address, *args):
-        msg_str = None
-        filters = config.get("filters", [])
+        logging.debug(f"[OSC] Received: {address} {' '.join(map(str, args))}")
 
-        if address.startswith("/qlab/event/workspace/go") and "go" in filters and len(args) >= 2:
-            cue_number = args[0]
-            cue_name = args[1]
-            msg_str = f"Qlab Cue #{cue_number} - {cue_name} - go"
-
-        elif address.startswith("/qlab/event/workspace/cue/start") and "start" in filters and len(args) >= 2:
-            cue_number = args[0]
-            cue_name = args[1]
-            msg_str = f"Qlab Cue #{cue_number} - {cue_name} - start"
-
-        elif address.startswith("/qlab/event/workspace/cue/stop") and "stop" in filters and len(args) >= 2:
-            cue_number = args[0]
-            cue_name = args[1]
-            msg_str = f"Qlab Cue #{cue_number} - {cue_name} - stop"
-
-        else:
-            logging.debug(f"[QLAB] Ignored: {address} {' '.join(str(a) for a in args)}")
-            return
-
-        # Store the cue first
-        self.latest_cue = msg_str
-
-
-        logging.info(f"[QLAB] {msg_str}")
         try:
-            self.theatrechat_client.send_message(
-                f"/theatrechat/message/{self.chat_channel}",
-                [self.chat_sender, msg_str]
-            )
-            logging.debug(f"[QLAB] Sent to TheatreChat: {msg_str}")
+            parts = address.strip("/").split("/")
+            
+            # Track cue start/stop states
+            if len(parts) >= 5 and parts[:2] == ["qlab", "event"]:
+                event_type = parts[3]
+                detail = parts[4] if len(parts) > 4 else ""
+                
+                # Handle cue stop events
+                if event_type == "stop" and detail == "uniqueID" and args:
+                    cue_id = args[0]
+                    if cue_id == self.active_cue_id:
+                        self.clear_overlay()
+                        logging.debug(f"[QLAB] Cleared overlay for stopped cue: {cue_id}")
+            elif address.startswith("/eos/out/active/cue/text") and args:
+                self.light_active_cue = f"LQ Current: {args[0]}"
+                logging.info(f"[ETC] Active cue: {self.light_active_cue}")
 
+            elif address.startswith("/eos/out/pending/cue/text") and args:
+                self.light_pending_cue = f"LQ Pending: {args[0]}"
+                logging.info(f"[ETC] Pending cue: {self.light_pending_cue}")
+
+
+
+            # Process cue events
+            filters = config.get("filters", [])
+            if len(parts) >= 5 and parts[:2] == ["qlab", "event"]:
+                event_type = parts[3]
+                detail = parts[4] if len(parts) > 4 else ""
+                
+                # Update cue data
+                if event_type not in self.current_cue_data:
+                    self.current_cue_data[event_type] = {}
+                if detail in ["number", "name", "uniqueID", "type"]:
+                    self.current_cue_data[event_type][detail] = args[0] if args else ""
+                
+                # Process when we have complete data
+                if (event_type in filters and 
+                    "name" in self.current_cue_data[event_type] and 
+                    "uniqueID" in self.current_cue_data[event_type]):
+                    
+                    cue_info = self.current_cue_data[event_type]
+                    cue_name = cue_info["name"]
+                    cue_id = cue_info["uniqueID"]
+                    cue_type = cue_info.get("type", "")
+                    msg_str = f"SQ - {cue_name} ({cue_type}) - {event_type}"
+                    
+                    # Immediately display new cue
+                    self.set_cue_timer(msg_str, cue_id, cue_type)
+                    logging.info(f"[QLAB] Displaying cue: {msg_str}")
+                    
+                    # Send to TheatreChat if enabled
+                    if config.get("enable_theatrechat", True):
+                        try:
+                            self.theatrechat_client.send_message(
+                                f"/theatrechat/message/{self.chat_channel}",
+                                [self.chat_sender, msg_str]
+                            )
+                        except Exception as e:
+                            logging.error(f"[QLAB] TheatreChat send failed: {e}")
+                    
+                    # Clean up
+                    del self.current_cue_data[event_type]
+                    
         except Exception as e:
-            logging.error(f"[QLAB] Failed to send to TheatreChat: {e}")
+            logging.error(f"[QLAB] OSC handler error: {e}")
