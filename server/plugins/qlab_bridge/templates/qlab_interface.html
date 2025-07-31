@@ -56,6 +56,17 @@
       margin-top: 15px;
       color: #0f0;
     }
+
+    textarea {
+      width: 100%;
+      height: 300px;
+      background-color: #222;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 14px;
+      border: 1px solid #444;
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
@@ -74,6 +85,8 @@
     <label for="chat_sender">TheatreChat Sender:</label>
     <input type="text" id="chat_sender" name="chat_sender" value="{{ config['chat_sender'] }}" required><br>
 
+    <label><input type="checkbox" name="enable_theatrechat" {% if config.get('enable_theatrechat', True) %}checked{% endif %}> Enable TheatreChat OSC</label><br>
+
     <label>Forward QLab Events:</label><br>
     <label><input type="checkbox" name="filters" value="go" {% if 'go' in config['filters'] %}checked{% endif %}> Go</label><br>
     <label><input type="checkbox" name="filters" value="start" {% if 'start' in config['filters'] %}checked{% endif %}> Start</label><br>
@@ -81,6 +94,13 @@
 
     <button type="submit">Save Settings</button>
     <div class="status" id="status"></div>
+  </form>
+
+  <h2>Edit Overlay Template (qlab_overlay.html)</h2>
+  <form id="overlay-form">
+    <textarea id="overlay_html" name="overlay_html">{{ overlay_content }}</textarea><br>
+    <button type="submit">Save Overlay</button>
+    <div class="status" id="overlay-status"></div>
   </form>
 
   <script>
@@ -94,9 +114,26 @@
 
       const status = document.getElementById('status');
       if (response.ok) {
-        status.textContent = "\u2714 Settings saved and reloaded!";
+        status.textContent = "\\u2714 Settings saved and reloaded!";
       } else {
-        status.textContent = "\u2716 Failed to save settings.";
+        status.textContent = "\\u2716 Failed to save settings.";
+      }
+    });
+
+    document.getElementById('overlay-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const htmlContent = document.getElementById('overlay_html').value;
+      const response = await fetch('/qlab/save_overlay', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ html: htmlContent })
+      });
+
+      const status = document.getElementById('overlay-status');
+      if (response.ok) {
+        status.textContent = "\\u2714 Overlay saved!";
+      } else {
+        status.textContent = "\\u2716 Failed to save overlay.";
       }
     });
   </script>
