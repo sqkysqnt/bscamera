@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QLab Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      background: transparent;
+      color: #00FF88;
+      font-size: 48px;
+      font-family: monospace;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="cue"></div>
+<script>
+  async function updateCue() {
+    try {
+      console.log("Fetching cue...");
+      const res = await fetch('/qlab/cue_text');
+      console.log("Response status:", res.status);
+      const data = await res.json();
+      console.log("Received data:", data);
+      document.getElementById('cue').textContent = data.cue || '';
+    } catch (err) {
+      console.error("Error fetching cue:", err);
+    }
+  }
+
+  setInterval(updateCue, 1000);
+  updateCue();
+</script>
+</body>
+</html>
