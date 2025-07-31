@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>QLab OSC Settings</title>
+  <style>
+    body {
+      background-color: #111;
+      color: #eee;
+      font-family: monospace;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #0f0;
+      font-size: 1.5em;
+    }
+
+    form {
+      margin-top: 20px;
+    }
+
+    label {
+      display: inline-block;
+      width: 180px;
+      margin-bottom: 10px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      background: #222;
+      color: #eee;
+      border: 1px solid #444;
+      padding: 6px;
+      width: 250px;
+    }
+
+    input[type="checkbox"] {
+      margin-left: 5px;
+    }
+
+    button {
+      margin-top: 20px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #444;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #444;
+    }
+
+    .status {
+      margin-top: 15px;
+      color: #0f0;
+    }
+  </style>
+</head>
+<body>
+  <h1>QLab Plugin Configuration</h1>
+
+  <form id="config-form">
+    <label for="qlab_ip">QLab IP:</label>
+    <input type="text" id="qlab_ip" name="qlab_ip" value="{{ config['qlab_ip'] }}" required><br>
+
+    <label for="qlab_port">QLab Port:</label>
+    <input type="number" id="qlab_port" name="qlab_port" value="{{ config['qlab_port'] }}" required><br>
+
+    <label for="chat_channel">TheatreChat Channel:</label>
+    <input type="text" id="chat_channel" name="chat_channel" value="{{ config['chat_channel'] }}" required><br>
+
+    <label for="chat_sender">TheatreChat Sender:</label>
+    <input type="text" id="chat_sender" name="chat_sender" value="{{ config['chat_sender'] }}" required><br>
+
+    <label>Forward QLab Events:</label><br>
+    <label><input type="checkbox" name="filters" value="go" {% if 'go' in config['filters'] %}checked{% endif %}> Go</label><br>
+    <label><input type="checkbox" name="filters" value="start" {% if 'start' in config['filters'] %}checked{% endif %}> Start</label><br>
+    <label><input type="checkbox" name="filters" value="stop" {% if 'stop' in config['filters'] %}checked{% endif %}> Stop</label><br>
+
+    <button type="submit">Save Settings</button>
+    <div class="status" id="status"></div>
+  </form>
+
+  <script>
+    document.getElementById('config-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const response = await fetch('/qlab/update_config', {
+        method: 'POST',
+        body: formData
+      });
+
+      const status = document.getElementById('status');
+      if (response.ok) {
+        status.textContent = "\u2714 Settings saved and reloaded!";
+      } else {
+        status.textContent = "\u2716 Failed to save settings.";
+      }
+    });
+  </script>
+</body>
+</html>
