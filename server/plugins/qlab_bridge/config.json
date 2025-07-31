@@ -4,6 +4,7 @@
     "local_port": 53001,
     "chat_channel": "qlab",
     "chat_sender": "qlab",
+    "enable_theatrechat": true,
     "filters": [
         "go"
     ]
