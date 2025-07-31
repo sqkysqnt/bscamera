@@ -1,0 +1,10 @@
+{
+    "qlab_ip": "192.168.11.196",
+    "qlab_port": 53000,
+    "local_port": 53001,
+    "chat_channel": "qlab",
+    "chat_sender": "qlab",
+    "filters": [
+        "go"
+    ]
+}
