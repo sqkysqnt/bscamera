@@ -10,29 +10,38 @@
       color: #00FF88;
       font-size: 48px;
       font-family: monospace;
-      text-align: center;
+      text-align: left;
       padding: 20px;
+    }
+
+    .line {
+      height: 1.2em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   </style>
 </head>
 <body>
-  <div id="cue"></div>
-<script>
-  async function updateCue() {
-    try {
-      console.log("Fetching cue...");
-      const res = await fetch('/qlab/cue_text');
-      console.log("Response status:", res.status);
-      const data = await res.json();
-      console.log("Received data:", data);
-      document.getElementById('cue').textContent = data.cue || '';
-    } catch (err) {
-      console.error("Error fetching cue:", err);
-    }
-  }
+  <div id="cue" class="line"></div>
+  <div id="light_active" class="line"></div>
+  <div id="light_pending" class="line"></div>
 
-  setInterval(updateCue, 1000);
-  updateCue();
-</script>
+  <script>
+    async function updateCue() {
+      try {
+        const res = await fetch('/qlab/cue_text');
+        const data = await res.json();
+        document.getElementById('cue').textContent = data.cue || '';
+        document.getElementById('light_active').textContent = data.light_active || '';
+        document.getElementById('light_pending').textContent = data.light_pending || '';
+      } catch (err) {
+        console.error("Error fetching cue:", err);
+      }
+    }
+
+    setInterval(updateCue, 1000);
+    updateCue();
+  </script>
 </body>
 </html>
