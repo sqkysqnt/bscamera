@@ -55,7 +55,7 @@ socketio = SocketIO(app,
                     async_mode='eventlet',
                     cors_allowed_origins="*",
                     logger=True, 
-                    engineio_logger=True,
+                    engineio_logger=False,
                     ping_timeout=30,
                     ping_interval=10
                     )
@@ -215,8 +215,8 @@ class CameraStream:
             if self.recording and self.current_frame is not None:
                 self.record_frame()
 
-    def record_frame(self):
-        """Record the current frame to the video file."""
+    """def record_frame(self):
+
         try:
             # Decode the JPEG image
             np_arr = np.frombuffer(self.current_frame, np.uint8)
@@ -239,7 +239,7 @@ class CameraStream:
             print(f"Error recording frame for camera {self.ip_address}: {e}")
 
     def start_recording(self, filename):
-        """Start recording video to the specified filename."""
+
         with self.recording_lock:
             if not self.recording:
                 self.recording = True
@@ -248,7 +248,7 @@ class CameraStream:
                 print(f"Started recording for camera {self.ip_address} to file {filename}")
 
     def stop_recording(self):
-        """Stop recording video."""
+
         with self.recording_lock:
             if self.recording:
                 self.recording = False
@@ -257,6 +257,7 @@ class CameraStream:
                     self.video_writer.release()
                     self.video_writer = None
                 print(f"Stopped recording for camera {self.ip_address}")
+                """
 
     def client_generator(self):
         """Generator function to yield frames to a client."""
@@ -349,15 +350,15 @@ class CameraRecorder(threading.Thread):
         command = [
             'ffmpeg',
             '-y',
-            '-f', 'image2pipe',     # or 'mjpeg' if that works better
-            '-framerate', '30',      # Input frame rate
-            '-video_size', '640x480', # Input frame size
-            '-i', '-',               # Input from stdin
-            '-c:v', 'libx264',       # Output video codec
+            '-f', 'image2pipe',
+            '-framerate', '30',
+            '-i', '-',
+            '-c:v', 'libx264',
             '-preset', 'veryfast',
             '-pix_fmt', 'yuv420p',
             self.filename
         ]
+
         logging.info(f"Starting FFmpeg with command: {' '.join(command)}")
         try:
             self.process = subprocess.Popen(
@@ -366,23 +367,45 @@ class CameraRecorder(threading.Thread):
                 stderr=subprocess.PIPE,
                 stdout=subprocess.PIPE
             )
-            while self.running:
-                frame = self.frame_queue.get()
-                if frame is None:  # Stop signal
-                    break
-                self.process.stdin.write(frame)
 
-            # Read FFmpeg stderr for errors
-            stderr_output = self.process.stderr.read().decode('utf-8')
-            if stderr_output:
-                logging.error(f"FFmpeg stderr for {self.ip_address}: {stderr_output}")
+            frame_interval = 1 / 30  # 30 fps target
+            last_frame_time = time.time()
+            last_good_frame = None
+
+            while self.running:
+                start = time.time()
+                try:
+                    frame = self.frame_queue.get(timeout=frame_interval)
+                    if frame and frame.startswith(b'\xff\xd8') and frame.endswith(b'\xff\xd9'):
+                        last_good_frame = frame
+                        self.process.stdin.write(frame)
+                    else:
+                        logging.warning(f"Invalid frame received for {self.ip_address}")
+                except eventlet.queue.Empty:
+                    # Frame dropped — repeat last good frame if available
+                    if last_good_frame:
+                        self.process.stdin.write(last_good_frame)
+                        logging.debug(f"Padding frame for {self.ip_address}")
+                    else:
+                        logging.warning(f"No frame to pad for {self.ip_address}")
+
+                # Delay to maintain real-time pacing
+                elapsed = time.time() - start
+                if elapsed < frame_interval:
+                    eventlet.sleep(frame_interval - elapsed)
+
+            # Final padding flush
+            self.process.stdin.close()
+            self.process.wait()
         except Exception as e:
             logging.error(f"Error recording from camera {self.ip_address}: {e}")
         finally:
             if self.process:
-                self.process.stdin.close()
+                if self.process.stdin and not self.process.stdin.closed:
+                    self.process.stdin.close()
                 self.process.terminate()
                 self.process.wait()
+
 
     def write_frame(self, frame):
         if self.running:
@@ -390,6 +413,8 @@ class CameraRecorder(threading.Thread):
                 self.frame_queue.put(frame)
             else:
                 logging.warning(f"Invalid frame received for {self.ip_address}")
+
+        
 
 
     def stop(self):
@@ -1152,7 +1177,12 @@ def start_recording(ip_address):
     recorder.start()
     recorders[ip_address] = recorder
 
+    # ✅ Enable recording flag so frames are sent
+    if ip_address in camera_streams:
+        camera_streams[ip_address].recording = True
+
     return jsonify({'status': f'Started recording for camera {ip_address}', 'filename': filename})
+
 
 def load_subscriptions():
     try:
